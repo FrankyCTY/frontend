@@ -213,7 +213,10 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
       this._updateHass({ panelUrl: this._panelUrl });
     };
 
-    // LLM: Set up history change listeners for route updates
+    // USERNOTE: On navigate, update route.
+    window.addEventListener("location-changed", () => updateRoute());
+
+    // Handle history changes
     if (useHash) {
       window.addEventListener("hashchange", () => updateRoute());
     } else {
