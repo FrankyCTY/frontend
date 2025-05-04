@@ -37,12 +37,14 @@ export interface RouterOptions {
   // Hook that is called before rendering a new route. Allowing redirects.
   // If string returned, that page will be rendered instead.
   beforeRender?: (page: string) => string | undefined;
+  // USERNOTE: Key: URL_PATH, Value: RouteOptions or string for specific panel
   routes: Record<string, RouteOptions | string>;
 }
 
 // Time to wait for code to load before we show loading screen.
 const LOADING_SCREEN_THRESHOLD = 400; // ms
 
+// USERNOTE: The base class for all router pages.
 export class HassRouterPage extends ReactiveElement {
   @property({ attribute: false }) public route?: Route;
 
@@ -50,6 +52,7 @@ export class HassRouterPage extends ReactiveElement {
 
   protected _currentPage = "";
 
+  // USERNOTE: Promise that resolves when the page has rendered
   private _currentLoadProm?: Promise<void>;
 
   private _cache = {};
@@ -279,6 +282,7 @@ export class HassRouterPage extends ReactiveElement {
     }
 
     this.route = undefined;
+    // USERNOTE: Wait for the update to complete before setting the route
     await this.updateComplete;
     // Make sure that the parent didn't override this in the meanwhile.
     if (this.route === undefined) {

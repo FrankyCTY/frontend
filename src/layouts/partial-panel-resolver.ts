@@ -14,7 +14,31 @@ import { removeLaunchScreen } from "../util/launch-screen";
 import type { RouteOptions, RouterOptions } from "./hass-router-page";
 import { HassRouterPage } from "./hass-router-page";
 
+/**
+ * LLM: Cache configuration for panel URLs.
+ *
+ * Purpose: Defines which panel paths should be cached for performance.
+ *
+ * Caveats & Side Effects:
+ * - Only lovelace and developer-tools panels are cached
+ * - Caching improves performance for frequently accessed panels
+ *
+ * Role in Scope: Optimizes panel loading performance.
+ */
 const CACHE_URL_PATHS = ["lovelace", "developer-tools"];
+
+/**
+ * LLM: Panel component mapping and lazy loading configuration.
+ *
+ * Purpose: Maps panel names to their dynamic import functions.
+ *
+ * Caveats & Side Effects:
+ * - Uses dynamic imports for code splitting
+ * - Each panel is loaded on-demand
+ * - Supports custom panels and iframes
+ *
+ * Role in Scope: Enables lazy loading of panel components.
+ */
 const COMPONENTS = {
   energy: () => import("../panels/energy/ha-panel-energy"),
   calendar: () => import("../panels/calendar/ha-panel-calendar"),
@@ -34,6 +58,18 @@ const COMPONENTS = {
     import("../panels/media-browser/ha-panel-media-browser"),
 };
 
+/**
+ * LLM: Panel resolver component for dynamic panel loading.
+ *
+ * Purpose: Manages the loading and display of different Home Assistant panels.
+ *
+ * Caveats & Side Effects:
+ * - Handles panel visibility and state management
+ * - Manages panel caching and lazy loading
+ * - Handles panel disconnection during background state
+ *
+ * Role in Scope: Core component for panel navigation and management.
+ */
 @customElement("partial-panel-resolver")
 class PartialPanelResolver extends HassRouterPage {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -48,10 +84,22 @@ class PartialPanelResolver extends HassRouterPage {
 
   private _hiddenTimeout?: number;
 
+  /**
+   * LLM: Initializes panel visibility management.
+   *
+   * Purpose: Sets up event listeners for panel visibility changes.
+   *
+   * Caveats & Side Effects:
+   * - Listens for document visibility changes
+   * - Handles app resume events
+   * - Manages panel state during background/foreground transitions
+   *
+   * Role in Scope: Ensures proper panel state management.
+   */
   protected firstUpdated(changedProps: PropertyValues) {
     super.firstUpdated(changedProps);
 
-    // Attach listeners for visibility
+    // LLM: Set up visibility change listeners for background state management
     document.addEventListener(
       "visibilitychange",
       () => this._checkVisibility(),
@@ -60,6 +108,18 @@ class PartialPanelResolver extends HassRouterPage {
     document.addEventListener("resume", () => this._checkVisibility());
   }
 
+  /**
+   * LLM: Updates panel state based on Home Assistant state changes.
+   *
+   * Purpose: Handles panel updates when Home Assistant state changes.
+   *
+   * Caveats & Side Effects:
+   * - Rebuilds panels on state transitions
+   * - Updates routes when panels change
+   * - Manages loading states
+   *
+   * Role in Scope: Maintains panel state consistency.
+   */
   public willUpdate(changedProps: PropertyValues) {
     super.willUpdate(changedProps);
 
@@ -69,6 +129,7 @@ class PartialPanelResolver extends HassRouterPage {
 
     const oldHass = changedProps.get("hass") as this["hass"];
 
+    // LLM: Handle Home Assistant startup state transitions
     if (
       this._waitForStart &&
       (this.hass.config.state === STATE_STARTING ||
@@ -78,11 +139,23 @@ class PartialPanelResolver extends HassRouterPage {
       this.rebuild();
     }
 
+    // LLM: Update routes when panels configuration changes
     if (this.hass.panels && (!oldHass || oldHass.panels !== this.hass.panels)) {
       this._updateRoutes(oldHass?.panels);
     }
   }
 
+  /**
+   * LLM: Creates loading screen for panel transitions.
+   *
+   * Purpose: Provides visual feedback during panel loading.
+   *
+   * Caveats & Side Effects:
+   * - Sets root navigation flag
+   * - Configures loading screen with current state
+   *
+   * Role in Scope: Manages loading state UI.
+   */
   protected createLoadingScreen() {
     const el = super.createLoadingScreen();
     el.rootnav = true;
@@ -91,6 +164,17 @@ class PartialPanelResolver extends HassRouterPage {
     return el;
   }
 
+  /**
+   * LLM: Updates panel content with current state.
+   *
+   * Purpose: Synchronizes panel content with current route and state.
+   *
+   * Caveats & Side Effects:
+   * - Updates panel properties
+   * - Handles route changes
+   *
+   * Role in Scope: Maintains panel content consistency.
+   */
   protected updatePageEl(el) {
     const hass = this.hass;
 
@@ -100,6 +184,17 @@ class PartialPanelResolver extends HassRouterPage {
     el.panel = hass.panels[this._currentPage];
   }
 
+  /**
+   * LLM: Manages panel visibility state.
+   *
+   * Purpose: Handles panel visibility changes for performance optimization.
+   *
+   * Caveats & Side Effects:
+   * - Respects suspendWhenHidden setting
+   * - Manages panel disconnection in background
+   *
+   * Role in Scope: Optimizes panel performance in background.
+   */
   private _checkVisibility() {
     if (this.hass.suspendWhenHidden === false) {
       return;
@@ -112,14 +207,28 @@ class PartialPanelResolver extends HassRouterPage {
     }
   }
 
+  /**
+   * LLM: Generates route configuration for panels.
+   *
+   * Purpose: Creates route configuration for panel navigation.
+   *
+   * Caveats & Side Effects:
+   * - Configures lazy loading for panels
+   * - Sets up caching for specific panels
+   *
+   * Role in Scope: Manages panel routing configuration.
+   */
   private _getRoutes(panels: Panels): RouterOptions {
     const routes: RouterOptions["routes"] = {};
+    // USERNOTE: Create routes for each panel
     Object.values(panels).forEach((panel) => {
       const data: RouteOptions = {
         tag: `ha-panel-${panel.component_name}`,
+        // USERNOTE: Cache panels that are frequently accessed
         cache: CACHE_URL_PATHS.includes(panel.url_path),
       };
       if (panel.component_name in COMPONENTS) {
+        // USERNOTE: Assign load component callback to corresponding dynamic import for panel component
         data.load = COMPONENTS[panel.component_name];
       }
       routes[panel.url_path] = data;
@@ -127,6 +236,7 @@ class PartialPanelResolver extends HassRouterPage {
 
     return {
       beforeRender: (page) => {
+        // USERNOTE: If page is not found, return default panel
         if (!page || !routes[page]) {
           return getDefaultPanel(this.hass).url_path;
         }
@@ -137,6 +247,17 @@ class PartialPanelResolver extends HassRouterPage {
     };
   }
 
+  /**
+   * LLM: Handles panel disconnection in background.
+   *
+   * Purpose: Optimizes performance by disconnecting unused panels.
+   *
+   * Caveats & Side Effects:
+   * - Preserves iframe and custom panel states
+   * - Manages active element focus
+   *
+   * Role in Scope: Optimizes background performance.
+   */
   private _onHidden() {
     this._hiddenTimeout = window.setTimeout(() => {
       this._hiddenTimeout = undefined;
@@ -168,6 +289,18 @@ class PartialPanelResolver extends HassRouterPage {
     window.addEventListener("focus", () => this._onVisible(), { once: true });
   }
 
+  /**
+   * LLM: Restores panel state when becoming visible.
+   *
+   * Purpose: Reconnects panels and restores UI state.
+   *
+   * Caveats & Side Effects:
+   * - Clears disconnection timeout
+   * - Restores disconnected panels
+   * - Restores focus state
+   *
+   * Role in Scope: Manages panel restoration.
+   */
   private _onVisible() {
     if (this._hiddenTimeout) {
       clearTimeout(this._hiddenTimeout);
@@ -183,14 +316,29 @@ class PartialPanelResolver extends HassRouterPage {
     }
   }
 
+  /**
+   * LLM: Updates panel routes and state.
+   *
+   * Purpose: Manages panel route updates and state transitions.
+   *
+   * Caveats & Side Effects:
+   * - Handles panel configuration changes
+   * - Manages loading states
+   * - Removes launch screen when ready
+   *
+   * Role in Scope: Maintains panel routing state.
+   */
   private async _updateRoutes(oldPanels?: HomeAssistant["panels"]) {
+    // USERNOTE: Update routes for new panels
     this.routerOptions = this._getRoutes(this.hass.panels);
 
+    // LLM: Handle panel not found during startup
     if (
       !this._waitForStart &&
       this._currentPage &&
       !this.hass.panels[this._currentPage]
     ) {
+      // USERNOTE: If HA is not running. Remove whatever was rendered before and show loading screen
       if (this.hass.config.state === STATE_NOT_RUNNING) {
         this._waitForStart = true;
         if (this.lastChild) {
@@ -201,6 +349,7 @@ class PartialPanelResolver extends HassRouterPage {
       }
     }
 
+    // USERNOTE: IF the panel info has changed/is first time rendering, rebuild the panel
     if (
       !oldPanels ||
       !deepEqual(
@@ -209,6 +358,7 @@ class PartialPanelResolver extends HassRouterPage {
       )
     ) {
       await this.rebuild();
+      // USERNOTE: Wait for the page to be rendered before removing the launch screen
       await this.pageRendered;
       removeLaunchScreen();
     }

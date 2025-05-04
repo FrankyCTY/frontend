@@ -13,6 +13,8 @@ export const listenMediaQuery = (
   const mql = matchMedia(mediaQuery);
   const listener = (e) => matchesChanged(e.matches);
   mql.addListener(listener);
+
+  // USERNOTE: Immediately invoke the callback with the current match state (bool)
   matchesChanged(mql.matches);
   return () => mql.removeListener(listener);
 };

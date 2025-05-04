@@ -9404,12 +9404,11 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"home-assistant-js-websocket@npm:9.5.0":
-  version: 9.5.0
-  resolution: "home-assistant-js-websocket@npm:9.5.0"
-  checksum: 10/42f991b3b85aa61be28984f099a001ac083fb3da54b2777283d0c97976c564a303d8d4ba467e1b8e29cbc33151cd6eef64c1a7d3392d62bbb9cbb27aa7ca9942
+"home-assistant-js-websocket@portal:/Users/chantakyu/Applications/pdir/ha/home-assistant-js-websocket::locator=home-assistant-frontend%40workspace%3A.":
+  version: 0.0.0-use.local
+  resolution: "home-assistant-js-websocket@portal:/Users/chantakyu/Applications/pdir/ha/home-assistant-js-websocket::locator=home-assistant-frontend%40workspace%3A."
   languageName: node
-  linkType: hard
+  linkType: soft
 
 "homedir-polyfill@npm:^1.0.1":
   version: 1.0.3

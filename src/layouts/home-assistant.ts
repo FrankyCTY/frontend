@@ -26,14 +26,32 @@ import "./home-assistant-main";
 import { storage } from "../common/decorators/storage";
 
 const useHash = __DEMO__;
+// USERNOTE: In demo, the path is after the hash so we extract it from the hash.
 const curPath = () =>
   useHash ? location.hash.substring(1) : location.pathname;
 
+// USERNOTE: Extract the panel from the path, it would be the text after the first slash but before the next slash.
+// Example: /lovelace/light/kitchen -> lovelace
 const panelUrl = (path: string) => {
   const dividerPos = path.indexOf("/", 1);
   return dividerPos === -1 ? path.substring(1) : path.substring(1, dividerPos);
 };
 
+/**
+ * LLM: Core application element that manages the Home Assistant frontend state and routing.
+ *
+ * Purpose: Acts as the root element of the Home Assistant frontend, managing the WebSocket connection,
+ *          state updates, and routing between different panels.
+ *
+ * Caveats & Side Effects:
+ * - Maintains a single source of truth for the hass object
+ * - Handles connection state and reconnection logic
+ * - Manages visibility and background behavior
+ * - Uses dynamic rendering approach for progressive loading
+ *
+ * Role in Scope: Serves as the central coordinator between the backend and frontend components,
+ *               ensuring state consistency and proper routing.
+ */
 @customElement("home-assistant")
 export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
   @state() private _route: Route;
@@ -49,10 +67,24 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
 
   private _visiblePromiseResolve?: () => void;
 
+  /**
+   * LLM: Initializes the application state and sets up routing.
+   *
+   * Purpose: Sets up the initial route and panel URL based on the current path.
+   *
+   * Caveats & Side Effects:
+   * - Redirects to default panel if path is empty
+   * - Initializes route and panel URL state
+   *
+   * Role in Scope: First step in application initialization, ensuring proper routing state.
+   */
   constructor() {
     super();
     const path = curPath();
+    // eslint-disable-next-line no-console
+    console.log("path", path);
 
+    // LLM: Redirect to default panel if no specific path is provided
     if (["", "/"].includes(path)) {
       navigate(`/${getStorageDefaultPanelUrlPath()}${location.search}`, {
         replace: true,
@@ -65,6 +97,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     this._panelUrl = panelUrl(path);
   }
 
+  /**
+   * LLM: Main rendering template for the application.
+   *
+   * Purpose: Renders the main application layout with the current route and hass state.
+   *
+   * Caveats & Side Effects:
+   * - Only called after data is available
+   * - Delegates actual rendering to home-assistant-main
+   *
+   * Role in Scope: Provides the main application structure once data is loaded.
+   */
   protected renderHass() {
     return html`
       <home-assistant-main
@@ -74,6 +117,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     `;
   }
 
+  /**
+   * LLM: Lifecycle method called before updates are processed.
+   *
+   * Purpose: Checks for database migration status and triggers migration check if needed.
+   *
+   * Caveats & Side Effects:
+   * - Only checks migration on first hass config change
+   * - Prevents unnecessary migration checks
+   *
+   * Role in Scope: Ensures database migrations are handled before rendering.
+   */
   protected willUpdate(changedProps: PropertyValues<this>) {
     super.willUpdate(changedProps);
     if (
@@ -86,6 +140,18 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     }
   }
 
+  /**
+   * LLM: Lifecycle method that handles updates and rendering setup.
+   *
+   * Purpose: Sets up the render method and removes launch screen when data is ready.
+   *
+   * Caveats & Side Effects:
+   * - Dynamically assigns render method when data is available
+   * - Removes launch screen when transitioning to main UI
+   * - Restores default update behavior
+   *
+   * Role in Scope: Manages the transition from loading to main UI.
+   */
   protected update(changedProps: PropertyValues<this>) {
     if (
       this.hass?.states &&
@@ -93,18 +159,35 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
       this.hass.services &&
       this._databaseMigration === false
     ) {
+      // USERNOTE: On reactive property changes, we run the renderHass() template, but thanks to Lit's DOM diffing it only patches bindings that actually changed.
       this.render = this.renderHass;
       this.update = super.update;
+      // USERNOTE: On reactive property changes, we remove the launch screen as we should have some data by now.
       removeLaunchScreen();
     }
     super.update(changedProps);
   }
 
+  /**
+   * LLM: Initial setup and event listener registration.
+   *
+   * Purpose: Sets up the initial Home Assistant connection and registers event listeners.
+   *
+   * Caveats & Side Effects:
+   * - Initializes WebSocket connection
+   * - Sets up navigation and visibility handlers
+   * - Registers service worker
+   * - Renders the launch screen
+   *
+   * Role in Scope: Completes the initialization process after element creation.
+   */
   protected firstUpdated(changedProps: PropertyValues<this>) {
+    // USERNOTE: Invoke the chain of mixings e.g. firstUpated() as they might need to set things up on first update.
     super.firstUpdated(changedProps);
     this._initializeHass();
     setTimeout(() => registerServiceWorker(this), 1000);
 
+    // USERNOTE: Update hass and store the state to local storage when the suspendWhenHidden property changes.
     this.addEventListener("hass-suspend-when-hidden", (ev) => {
       this._updateHass({ suspendWhenHidden: ev.detail.suspend });
       storeState(this.hass!);
@@ -112,29 +195,43 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
 
     // Navigation
     const updateRoute = (path = curPath()) => {
+      // USERNOTE: Current route is the same as the new path, so we don't need to update anything.
       if (this._route && path === this._route.path) {
         return;
       }
+      // USERNOTE: Update current route state.
       this._route = {
         prefix: "",
         path: path,
       };
 
+      // USERNOTE: Update the panel URL state based on target new path.
       this._panelUrl = panelUrl(path);
+      // USERNOTE: Propagate the new panel URL to the translations-mixin.
       this.panelUrlChanged(this._panelUrl!);
+      // USERNOTE: Update the hass object with the new panel URL.
       this._updateHass({ panelUrl: this._panelUrl });
     };
 
-    window.addEventListener("location-changed", () => updateRoute());
-
-    // Handle history changes
+    // LLM: Set up history change listeners for route updates
     if (useHash) {
       window.addEventListener("hashchange", () => updateRoute());
     } else {
       window.addEventListener("popstate", () => updateRoute());
     }
 
-    // Handle clicking on links
+    /**
+     * LLM: Global link click interception for SPA navigation.
+     *
+     * Purpose: Intercepts all link clicks in the application to enable client-side navigation.
+     *
+     * Caveats & Side Effects:
+     * - Prevents full page reloads for internal navigation
+     * - Maintains browser history state
+     * - Works with both hash-based and path-based routing
+     *
+     * Role in Scope: Enables single-page application behavior throughout the frontend.
+     */
     window.addEventListener("click", (ev) => {
       const href = isNavigationClick(ev);
       if (href) {
@@ -144,14 +241,27 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
 
     // Render launch screen info box (loading data / error message)
     // if Home Assistant is not loaded yet.
+    // USERNOTE: Hass is rendered when all the core hass properties are loaded in update().
     if (this.render !== this.renderHass) {
       this._renderInitInfo(false);
     }
   }
 
+  /**
+   * LLM: Handles updates to the hass object and database migration state.
+   *
+   * Purpose: Updates child components and handles migration state changes.
+   *
+   * Caveats & Side Effects:
+   * - Updates hass reference for child components
+   * - Handles migration screen display
+   *
+   * Role in Scope: Ensures state consistency across the application.
+   */
   protected updated(changedProps: PropertyValues): void {
     super.updated(changedProps);
     if (changedProps.has("hass")) {
+      // USERNOTE: Updates hass reference for child components
       this.hassChanged(
         this.hass!,
         changedProps.get("hass") as HomeAssistant | undefined
@@ -159,6 +269,7 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     }
     if (changedProps.has("_databaseMigration")) {
       if (this.render !== this.renderHass) {
+        // USERNOTE: Render the init info box if we have not rendered the main content yet, otherwise we have to refresh to do so.
         this._renderInitInfo(false);
       } else if (this._databaseMigration) {
         // we already removed the launch screen, so we refresh to add it again to show the migration screen
@@ -167,6 +278,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     }
   }
 
+  /**
+   * LLM: Handles WebSocket connection establishment.
+   *
+   * Purpose: Sets up translations and visibility handlers when connection is established.
+   *
+   * Caveats & Side Effects:
+   * - Loads entity translations
+   * - Sets up visibility change handlers
+   *
+   * Role in Scope: Completes setup after WebSocket connection is established.
+   */
   protected hassConnected() {
     super.hassConnected();
     // @ts-ignore
@@ -183,11 +305,33 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     document.addEventListener("resume", () => this._checkVisibility());
   }
 
+  /**
+   * LLM: Handles WebSocket reconnection.
+   *
+   * Purpose: Checks for updates when connection is restored.
+   *
+   * Caveats & Side Effects:
+   * - Checks for backend version changes
+   * - Triggers frontend updates if needed
+   *
+   * Role in Scope: Ensures frontend stays in sync with backend after reconnection.
+   */
   protected hassReconnected() {
     super.hassReconnected();
     this._checkUpdate(this.hass!.connection);
   }
 
+  /**
+   * LLM: Checks for backend version updates.
+   *
+   * Purpose: Ensures frontend is updated when backend version changes.
+   *
+   * Caveats & Side Effects:
+   * - Triggers service worker update if available
+   * - Forces page reload if service worker is not available
+   *
+   * Role in Scope: Maintains version compatibility between front and backend.
+   */
   private _checkUpdate(connection: Connection) {
     const oldVersion = this._haVersion;
     const currentVersion = connection.haVersion;
@@ -239,6 +383,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     }
   }
 
+  /**
+   * LLM: Initializes the Home Assistant connection.
+   *
+   * Purpose: Establishes the WebSocket connection and initializes the hass object.
+   *
+   * Caveats & Side Effects:
+   * - Handles both direct and delayed connection scenarios
+   * - Shows error screen if connection fails
+   *
+   * Role in Scope: Sets up the core connection to the Home Assistant backend.
+   */
   protected async _initializeHass() {
     try {
       let result;
@@ -254,6 +409,7 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
 
       const { auth, conn } = result;
       this._checkUpdate(conn);
+      // USERNOTE: Initialize the hass object & connection subscriptions e.g.
       this.initializeHass(auth, conn);
     } catch (_err: any) {
       this._renderInitInfo(true);
@@ -269,6 +425,18 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     }
   }
 
+  /**
+   * LLM: Handles visibility changes and connection management.
+   *
+   * Purpose: Manages connection state based on document visibility to optimize resource usage.
+   *
+   * Caveats & Side Effects:
+   * - Suspends reconnection attempts when hidden
+   * - Closes connection after 5 minutes of inactivity
+   * - Resumes connection when visible again
+   *
+   * Role in Scope: Optimizes resource usage and connection management based on user activity.
+   */
   private _onHidden() {
     if (this._visiblePromiseResolve) {
       return;
@@ -279,11 +447,9 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
       })
     );
     if (this.hass!.suspendWhenHidden !== false) {
-      // We close the connection to Home Assistant after being hidden for 5 minutes
+      // LLM: Close connection after 5 minutes of inactivity
       this._hiddenTimeout = window.setTimeout(() => {
         this._hiddenTimeout = undefined;
-        // setTimeout can be delayed in the background and only fire
-        // when we switch to the tab or app again (Hey Android!)
         if (document.hidden) {
           this._suspendApp();
         }
@@ -292,6 +458,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     window.addEventListener("focus", () => this._onVisible(), { once: true });
   }
 
+  /**
+   * LLM: Suspends the application when in background.
+   *
+   * Purpose: Stops the application and suspends the WebSocket connection.
+   *
+   * Caveats & Side Effects:
+   * - Stops all ongoing operations
+   * - Suspends WebSocket connection
+   *
+   * Role in Scope: Optimizes resource usage when app is in background.
+   */
   private _suspendApp() {
     if (!this.hass!.connection.connected) {
       return;
@@ -300,6 +477,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     this.hass!.connection.suspend();
   }
 
+  /**
+   * LLM: Handles application becoming visible again.
+   *
+   * Purpose: Resumes normal operation when app becomes visible.
+   *
+   * Caveats & Side Effects:
+   * - Clears connection timeout
+   * - Resumes reconnection attempts
+   *
+   * Role in Scope: Restores normal operation after background state.
+   */
   private _onVisible() {
     // Clear timer to close the connection
     if (this._hiddenTimeout) {
@@ -313,6 +501,17 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     }
   }
 
+  /**
+   * LLM: Renders the initial loading or error screen.
+   *
+   * Purpose: Shows appropriate screen during loading or error states.
+   *
+   * Caveats & Side Effects:
+   * - Shows error screen if connection failed
+   * - Shows migration screen if database is migrating
+   *
+   * Role in Scope: Provides user feedback during application states.
+   */
   private _renderInitInfo(error: boolean) {
     renderLaunchScreenInfoBox(
       html`<ha-init-page

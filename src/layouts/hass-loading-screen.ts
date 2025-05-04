@@ -14,6 +14,7 @@ class HassLoadingScreen extends LitElement {
   @property({ type: Boolean, attribute: "no-toolbar" })
   public noToolbar = false;
 
+  // USERNOTE: If true, meaning it is the loading for the root page, the toolbar will not be shown
   @property({ type: Boolean }) public rootnav = false;
 
   @property({ type: Boolean }) public narrow = false;
