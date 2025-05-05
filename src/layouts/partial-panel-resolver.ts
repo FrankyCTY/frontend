@@ -76,6 +76,7 @@ class PartialPanelResolver extends HassRouterPage {
 
   @property({ type: Boolean }) public narrow = false;
 
+  // USERNOTE: A control flag that temporarily blocks the rendering or update of the current panel route until Home Assistant has progressed to a usable state (STATE_STARTING or STATE_RUNNING)
   private _waitForStart = false;
 
   private _disconnectedPanel?: HTMLElement;
@@ -97,6 +98,8 @@ class PartialPanelResolver extends HassRouterPage {
    * Role in Scope: Ensures proper panel state management.
    */
   protected firstUpdated(changedProps: PropertyValues) {
+    // eslint-disable-next-line no-console
+    console.log("partial-panel-resolver: firstUpdated", changedProps);
     super.firstUpdated(changedProps);
 
     // LLM: Set up visibility change listeners for background state management
@@ -121,6 +124,8 @@ class PartialPanelResolver extends HassRouterPage {
    * Role in Scope: Maintains panel state consistency.
    */
   public willUpdate(changedProps: PropertyValues) {
+    // eslint-disable-next-line no-console
+    console.log("partial-panel-resolver: willUpdate", changedProps);
     super.willUpdate(changedProps);
 
     if (!changedProps.has("hass")) {
@@ -128,14 +133,18 @@ class PartialPanelResolver extends HassRouterPage {
     }
 
     const oldHass = changedProps.get("hass") as this["hass"];
+    // eslint-disable-next-line no-console
+    console.log("===== OLD HASS =====", oldHass);
 
-    // LLM: Handle Home Assistant startup state transitions
+    // LLM: If _waitForStart is true and the system transitions to a usable state (STARTING or RUNNING), it triggers a rebuild():
+    // This clears and reassigns the route (this.route) after updateComplete, forcing the panel view to reinitialize once the system is ready.
     if (
       this._waitForStart &&
       (this.hass.config.state === STATE_STARTING ||
         this.hass.config.state === STATE_RUNNING)
     ) {
       this._waitForStart = false;
+      // USERNOTE: Non-blocking to willUpdate(). This waits until updateComplete().
       this.rebuild();
     }
 
@@ -332,15 +341,18 @@ class PartialPanelResolver extends HassRouterPage {
     // USERNOTE: Update routes for new panels
     this.routerOptions = this._getRoutes(this.hass.panels);
 
-    // LLM: Handle panel not found during startup
+    // USERNOTE: If a panel is missing from the current config and the system is NOT_RUNNING, it:
+    // - Sets _waitForStart = true
+    // - Replaces the rendered panel (if any) with a loading screen.
+    // This avoids displaying a broken panel during HA downtime, instead waiting for a valid startup state before re-rendering.
     if (
       !this._waitForStart &&
       this._currentPage &&
       !this.hass.panels[this._currentPage]
     ) {
-      // USERNOTE: If HA is not running. Remove whatever was rendered before and show loading screen
       if (this.hass.config.state === STATE_NOT_RUNNING) {
         this._waitForStart = true;
+        // USERNOTE: Replaces the rendered panel (if any) with a loading screen.
         if (this.lastChild) {
           this.removeChild(this.lastChild);
         }
