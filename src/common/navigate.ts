@@ -65,13 +65,15 @@ export const navigate = async (
 
   // LLM: Handle dialog cleanup before navigation
   if (history.state?.dialog && Date.now() - timestamp < DIALOG_WAIT_TIMEOUT) {
+    // USERNOTE: If a dialog is open and it's been a short time since the navigation began, it attempts to close dialogs first (closeAllDialogs()).
     const closed = await closeAllDialogs();
-    // USERNOTE: If the dialog is not closed, we warn the user and return false to indicate navigation failed.
+    // USERNOTE: If the dialog can not be closed, we warn the user and return false to indicate navigation failed.
     if (!closed) {
       // eslint-disable-next-line no-console
       console.warn("Navigation blocked, because dialog refused to close");
       return false;
     }
+    // USERNOTE: If the dialog is closed, we wait for the history state to update after dialog closure (setTimeout()), until the history.state.dialog is cleared.
     return new Promise<boolean>((resolve) => {
       // LLM: Wait for history state update after dialog closure
       setTimeout(() => {
@@ -79,6 +81,7 @@ export const navigate = async (
       });
     });
   }
+  // USERNOTE: All dialogs should be closed by now based on the history state, so we can proceed with the navigation.
   const replace = options?.replace || false;
 
   // LLM: Handle navigation based on demo mode and replace option
@@ -93,12 +96,14 @@ export const navigate = async (
       mainWindow.location.hash = path;
     }
   } else if (replace) {
+    // USERNOTE: Replace state: Update the URL and browser history state without reloading the page.
     history.replaceState(
       history.state?.root ? { root: true } : (options?.data ?? null),
       "",
       path
     );
   } else {
+    // USERNOTE: Push new state: Update the URL and browser history state without reloading the page.
     history.pushState(options?.data ?? null, "", path);
   }
 

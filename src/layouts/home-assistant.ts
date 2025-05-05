@@ -194,6 +194,7 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
     });
 
     // Navigation
+    // USERNOTE: curPath() returns the current path of the application, which likely would be the updated history state from navigate().
     const updateRoute = (path = curPath()) => {
       // USERNOTE: Current route is the same as the new path, so we don't need to update anything.
       if (this._route && path === this._route.path) {

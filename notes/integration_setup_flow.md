@@ -340,3 +340,150 @@ The frontend handles several distinct types of integrations, each with its own s
 - **Setup Flow**:
   - Checks for required integrations
   - Uses parent integration's config
+
+## WebSocket Subscriptions and Real-time Updates
+
+### 1. Connection Management
+
+The frontend maintains a persistent WebSocket connection to the Home Assistant backend for real-time updates:
+
+```typescript
+// Core connection management in connection-mixin.ts
+protected hassConnected() {
+  const conn = this.hass!.connection;
+  broadcastConnectionStatus("connected");
+
+  // Connection event handlers
+  conn.addEventListener("ready", () => this.hassReconnected());
+  conn.addEventListener("disconnected", () => this.hassDisconnected());
+  conn.addEventListener("reconnect-error", (_conn, err) => {
+    if (err === ERR_INVALID_AUTH) {
+      broadcastConnectionStatus("auth-invalid");
+      location.reload();
+    }
+  });
+}
+```
+
+### 2. Core Subscriptions
+
+The frontend subscribes to various data streams:
+
+1. **Entity States**
+
+   ```typescript
+   subscribeEntities(conn, (states) => this._updateHass({ states }));
+   ```
+
+   - Purpose: Track entity state changes
+   - Role: Keep UI in sync with backend state
+   - Impact: Real-time updates for all entities
+
+2. **Entity Registry**
+
+   ```typescript
+   subscribeEntityRegistryDisplay(conn, (entityReg) => {
+     // Process entity metadata
+     this._updateHass({ entities });
+   });
+   ```
+
+   - Purpose: Track entity metadata changes
+   - Role: Update entity display information
+   - Impact: UI updates for entity properties
+
+3. **Device Registry**
+
+   ```typescript
+   subscribeDeviceRegistry(conn, (deviceReg) => {
+     // Process device information
+     this._updateHass({ devices });
+   });
+   ```
+
+   - Purpose: Track device information
+   - Role: Update device relationships
+   - Impact: Device management UI updates
+
+4. **Configuration**
+   ```typescript
+   subscribeConfig(conn, (config) => this._updateHass({ config }));
+   ```
+   - Purpose: Track configuration changes
+   - Role: Update UI based on config
+   - Impact: System-wide configuration updates
+
+### 3. Health Monitoring
+
+The connection is actively monitored:
+
+```typescript
+// Connection health check
+this.__backendPingInterval = setInterval(() => {
+  if (this.hass?.connected) {
+    promiseTimeout(15000, this.hass?.connection.ping()).catch(() => {
+      if (!this.hass?.connected) return;
+      this.hass?.connection.reconnect(true);
+    });
+  }
+}, 30000);
+```
+
+- **Purpose**: Ensure connection stability
+- **Role**: Detect and recover from connection issues
+- **Impact**: Maintains real-time updates
+
+### 4. Integration-specific Subscriptions
+
+Integrations can establish their own subscriptions:
+
+```typescript
+// Example: Z-Wave JS subscription
+subscribeZwaveNodeStatus(
+  hass: HomeAssistant,
+  device_id: string,
+  callback: (message: ZWaveJSNodeStatusUpdatedMessage) => void
+)
+```
+
+- **Purpose**: Track integration-specific events
+- **Role**: Update integration-specific UI
+- **Impact**: Real-time updates for integration features
+
+### 5. Subscription Lifecycle
+
+1. **Establishment**
+
+   - Created during component initialization
+   - Managed by connection-mixin
+   - Automatically reconnected on disconnection
+
+2. **Cleanup**
+
+   - Unsubscribe functions returned for cleanup
+   - Called during component disconnection
+   - Prevents memory leaks
+
+3. **Error Handling**
+   - Automatic reconnection attempts
+   - Error state propagation
+   - User notification for critical errors
+
+### 6. Performance Considerations
+
+1. **Connection Management**
+
+   - Single WebSocket connection
+   - Efficient message batching
+   - Automatic reconnection
+
+2. **Data Processing**
+
+   - Memoization of processed data
+   - Efficient state updates
+   - Batched UI updates
+
+3. **Resource Usage**
+   - Subscription cleanup
+   - Memory management
+   - Connection pooling

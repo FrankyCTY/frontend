@@ -53,6 +53,12 @@ import "./ha-integration-list-item";
 import type { AddIntegrationDialogParams } from "./show-add-integration-dialog";
 import { showYamlIntegrationDialog } from "./show-add-integration-dialog";
 
+/**
+ * LLM: Interface defining the structure of an integration list item
+ * Purpose: Represents an integration in the UI with its properties and capabilities
+ * Role: Used throughout the dialog to display and handle different types of integrations
+ * Caveats: Properties determine how the integration is handled in the setup flow
+ */
 export interface IntegrationListItem {
   name: string;
   domain: string;
@@ -69,6 +75,12 @@ export interface IntegrationListItem {
   single_config_entry?: boolean;
 }
 
+/**
+ * LLM: Main dialog component for adding new integrations
+ * Purpose: Provides a unified interface for adding different types of integrations
+ * Role: Entry point for integration setup, handles different integration types
+ * Caveats: Manages complex state for different integration flows
+ */
 @customElement("dialog-add-integration")
 class AddIntegrationDialog extends LitElement {
   public hass!: HomeAssistant;
@@ -95,6 +107,12 @@ class AddIntegrationDialog extends LitElement {
 
   private _height?: number;
 
+  /**
+   * LLM: Shows the integration dialog with optional parameters
+   * Purpose: Entry point for adding new integrations
+   * Role: Initializes the dialog and starts the integration process
+   * Caveats: Handles different entry points (brand, domain, initial filter)
+   */
   public async showDialog(params?: AddIntegrationDialogParams): Promise<void> {
     const loadPromise = this._load();
     this._open = true;
@@ -157,6 +175,24 @@ class AddIntegrationDialog extends LitElement {
     }
   }
 
+  /**
+   * LLM: Filters and categorizes integrations based on their type
+   * Purpose: Organizes integrations for display in the UI
+   * Role: Determines how each integration should be handled
+   * Caveats: Complex logic for handling different integration types
+   *
+   * Data Sources:
+   * - i: Brands - Core and custom integrations from getIntegrationDescriptions
+   * - h: Integrations - Helper integrations from getIntegrationDescriptions
+   * - components: HassConfig["components"] - List of loaded components
+   * - localize: LocalizeFunc - Function for translating strings
+   * - filter?: string - Optional search filter
+   *
+   * Performance:
+   * - Uses memoizeOne to cache results
+   * - Only recomputes when inputs change
+   * - Optimizes UI rendering performance
+   */
   private _filterIntegrations = memoizeOne(
     (
       i: Brands,
@@ -165,6 +201,10 @@ class AddIntegrationDialog extends LitElement {
       localize: LocalizeFunc,
       filter?: string
     ): IntegrationListItem[] => {
+      // LLM: Add device rows for protocol integrations (Z-Wave, Zigbee, etc.)
+      // Purpose: Create entries for hardware protocol integrations
+      // Role: Shows device discovery options for supported protocols
+      // Caveats: Only shows protocols that are loaded as components
       const addDeviceRows: IntegrationListItem[] = PROTOCOL_INTEGRATIONS.filter(
         (domain) => components.includes(domain)
       )
@@ -183,25 +223,33 @@ class AddIntegrationDialog extends LitElement {
           )
         );
 
+      // LLM: Initialize lists for different integration types
+      // Purpose: Separate integrations by their configuration method
+      // Role: Organizes integrations for display and filtering
       const integrations: IntegrationListItem[] = [];
       const yamlIntegrations: IntegrationListItem[] = [];
 
+      // LLM: Process each integration from the brands list
+      // Purpose: Categorize integrations based on their properties
+      // Role: Determines how each integration should be handled
       Object.entries(i).forEach(([domain, integration]) => {
+        // LLM: Skip hardware integrations as they can't be added via UI
         if (
           "integration_type" in integration &&
           integration.integration_type === "hardware"
         ) {
-          // Ignore hardware integrations, they cannot be added via UI
           return;
         }
 
+        // LLM: Handle integrations with config flow, IoT standards, or supported by another integration
+        // Purpose: Process integrations that use the config flow system
+        // Role: Creates entries for user-friendly setup flows
         if (
           "integration_type" in integration &&
           (integration.config_flow ||
             integration.iot_standards ||
             integration.supported_by)
         ) {
-          // Integration with a config flow, iot standard, or supported by
           const supportedIntegration = integration.supported_by
             ? findIntegration(this._integrations, integration.supported_by)
             : integration;
@@ -219,11 +267,14 @@ class AddIntegrationDialog extends LitElement {
             cloud: supportedIntegration.iot_class?.startsWith("cloud_"),
             single_config_entry: integration.single_config_entry,
           });
-        } else if (
+        }
+        // LLM: Handle brand integrations (collections of related integrations)
+        // Purpose: Process brand-specific integrations (e.g., Apple, Google)
+        // Role: Groups related integrations under a brand
+        else if (
           !("integration_type" in integration) &&
           ("iot_standards" in integration || "integrations" in integration)
         ) {
-          // Brand
           integrations.push({
             domain,
             name: integration.name || domainToName(localize, domain),
@@ -239,8 +290,11 @@ class AddIntegrationDialog extends LitElement {
             is_built_in: integration.is_built_in !== false,
             overwrites_built_in: integration.overwrites_built_in,
           });
-        } else if (filter && "integration_type" in integration) {
-          // Integration without a config flow
+        }
+        // LLM: Handle YAML-based integrations (no config flow)
+        // Purpose: Process integrations that require manual YAML configuration
+        // Role: Shows YAML configuration instructions
+        else if (filter && "integration_type" in integration) {
           yamlIntegrations.push({
             domain,
             name: integration.name || domainToName(localize, domain),
@@ -252,6 +306,10 @@ class AddIntegrationDialog extends LitElement {
         }
       });
 
+      // LLM: Apply search filter if provided
+      // Purpose: Filter integrations based on user search
+      // Role: Enables quick finding of integrations
+      // Caveats: Uses Fuse.js for fuzzy search
       if (filter) {
         const options: IFuseOptions<IntegrationListItem> = {
           keys: [
@@ -266,6 +324,10 @@ class AddIntegrationDialog extends LitElement {
           threshold: 0.2,
           ignoreDiacritics: true,
         };
+
+        // LLM: Process helper integrations for search
+        // Purpose: Include helper integrations in search results
+        // Role: Makes helpers discoverable through search
         const helpers = Object.entries(h).map(([domain, integration]) => ({
           domain,
           name: integration.name || domainToName(localize, domain),
@@ -274,6 +336,10 @@ class AddIntegrationDialog extends LitElement {
           is_built_in: integration.is_built_in !== false,
           cloud: integration.iot_class?.startsWith("cloud_"),
         }));
+
+        // LLM: Return filtered results
+        // Purpose: Combine and return search results
+        // Role: Provides filtered integration list to UI
         return [
           ...new Fuse(integrations, options)
             .search(filter)
@@ -286,6 +352,10 @@ class AddIntegrationDialog extends LitElement {
             .map((result) => result.item),
         ];
       }
+
+      // LLM: Return unfiltered list
+      // Purpose: Show all available integrations
+      // Role: Provides complete integration list to UI
       return [
         ...addDeviceRows,
         ...integrations.sort((a, b) =>
@@ -299,6 +369,12 @@ class AddIntegrationDialog extends LitElement {
     }
   );
 
+  /**
+   * LLM: Gets the filtered list of integrations
+   * Purpose: Provides access to filtered integration list
+   * Role: Used by render method to display integrations
+   * Caveats: Depends on _filterIntegrations memoization
+   */
   private _getIntegrations() {
     return this._filterIntegrations(
       this._integrations!,
@@ -549,24 +625,34 @@ class AddIntegrationDialog extends LitElement {
     }
   }
 
+  /**
+   * LLM: Handles integration selection and starts appropriate setup flow
+   * Purpose: Routes integration setup based on integration type
+   * Role: Central decision point for integration setup
+   * Caveats: Different paths for different integration types
+   */
   private async _handleIntegrationPicked(integration: IntegrationListItem) {
+    // LLM: Handle integrations supported by another integration
     if (integration.supported_by) {
       this._supportedBy(integration);
       return;
     }
 
+    // LLM: Handle protocol integrations (Z-Wave, Zigbee, etc.)
     if (integration.is_add) {
       protocolIntegrationPicked(this, this.hass, integration.domain);
       this.closeDialog();
       return;
     }
 
+    // LLM: Handle helper integrations
     if (integration.is_helper) {
       this.closeDialog();
       navigate(`/config/helpers/add?domain=${integration.domain}`);
       return;
     }
 
+    // LLM: Handle brand integrations (collections of related integrations)
     if (integration.integrations) {
       let domains = integration.domains || [];
       if (integration.domain === "apple") {
@@ -578,6 +664,7 @@ class AddIntegrationDialog extends LitElement {
       return;
     }
 
+    // LLM: Handle protocol integrations with loaded component
     if (
       (PROTOCOL_INTEGRATIONS as readonly string[]).includes(
         integration.domain
@@ -588,11 +675,13 @@ class AddIntegrationDialog extends LitElement {
       return;
     }
 
+    // LLM: Handle IoT standard integrations
     if (integration.iot_standards) {
       this._pickedBrand = integration.domain;
       return;
     }
 
+    // LLM: Handle single config entry integrations
     if (integration.single_config_entry) {
       const configEntries = await getConfigEntries(this.hass, {
         domain: integration.domain,
@@ -618,11 +707,13 @@ class AddIntegrationDialog extends LitElement {
       }
     }
 
+    // LLM: Handle config flow integrations
     if (integration.config_flow) {
       this._createFlow(integration.domain);
       return;
     }
 
+    // LLM: Handle cloud integrations
     if (
       integration.domain === "cloud" &&
       isComponentLoaded(this.hass, "cloud")
@@ -632,6 +723,7 @@ class AddIntegrationDialog extends LitElement {
       return;
     }
 
+    // LLM: Handle voice assistant integrations
     if (
       ["google_assistant", "alexa"].includes(integration.domain) &&
       isComponentLoaded(this.hass, "cloud")
@@ -641,6 +733,7 @@ class AddIntegrationDialog extends LitElement {
       return;
     }
 
+    // LLM: Handle YAML-based integrations
     const manifest = await fetchIntegrationManifest(
       this.hass,
       integration.domain
