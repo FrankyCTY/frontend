@@ -11,6 +11,17 @@ import type { HomeAssistant, Route } from "../types";
 import "./partial-panel-resolver";
 import { computeRTLDirection } from "../common/util/compute_rtl";
 
+/**
+ * LLM: Event interface for Home Assistant DOM events.
+ *
+ * Purpose: Defines the structure of events that can be fired to control the main UI.
+ *
+ * Caveats & Side Effects:
+ * - Controls menu toggling, sidebar editing, and notification display
+ * - Events are used for UI state management
+ *
+ * Role in Scope: Provides type safety for UI control events.
+ */
 declare global {
   // for fire event
   interface HASSDomEvents {
@@ -28,6 +39,18 @@ interface EditSideBarEvent {
   editMode: boolean;
 }
 
+/**
+ * LLM: Main application container component for Home Assistant.
+ *
+ * Purpose: Manages the main layout including sidebar, drawer, and panel content.
+ *
+ * Caveats & Side Effects:
+ * - Handles responsive layout changes
+ * - Manages external authentication integration
+ * - Controls sidebar and drawer state
+ *
+ * Role in Scope: Serves as the root container for the Home Assistant UI.
+ */
 @customElement("home-assistant-main")
 export class HomeAssistantMain extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -44,6 +67,7 @@ export class HomeAssistantMain extends LitElement {
 
   constructor() {
     super();
+    // USERNOTE: Set up responsive layout listener
     listenMediaQuery("(max-width: 870px)", (matches) => {
       this.narrow = matches;
     });
@@ -76,17 +100,45 @@ export class HomeAssistantMain extends LitElement {
     `;
   }
 
+  /**
+   * LLM: Initializes the main application component.
+   *
+   * Purpose: Sets up external authentication, sidebar, and event listeners.
+   *
+   * Caveats & Side Effects:
+   * - Handles external authentication integration
+   * - Sets up sidebar editing mode
+   * - Configures menu toggle and notification events
+   *
+   * Role in Scope: Initializes core UI functionality and external integrations.
+   */
   protected firstUpdated() {
+    // Preload sidebar component for better performance
     import(/* webpackPreload: true */ "../components/ha-sidebar");
 
+    /**
+     * LLM: External Authentication Integration
+     *
+     * Purpose: Handles integration with external authentication providers.
+     *
+     * Caveats & Side Effects:
+     * - Checks if external auth is enabled
+     * - Configures sidebar visibility based on external auth settings
+     * - Loads external app entrypoint if needed
+     *
+     * Role in Scope: Manages external authentication UI integration.
+     */
     if (this.hass.auth.external) {
+      // Check if external auth provider has sidebar enabled
       this._externalSidebar =
         this.hass.auth.external.config.hasSidebar === true;
+      // Load and attach external app entrypoint
       import("../external_app/external_app_entrypoint").then((mod) =>
         mod.attachExternalToApp(this)
       );
     }
 
+    // USERNOTE: Set up sidebar edit mode event listener
     this.addEventListener(
       "hass-edit-sidebar",
       (ev: HASSDomEvent<EditSideBarEvent>) => {
@@ -104,11 +156,13 @@ export class HomeAssistantMain extends LitElement {
       }
     );
 
+    // USERNOTE: Set up menu toggle event listener
     this.addEventListener("hass-toggle-menu", (ev) => {
       if (this._sidebarEditMode) {
         return;
       }
       if (this._externalSidebar) {
+        // LLM: Handle external sidebar menu toggle
         this.hass.auth.external!.fireMessage({
           type: "sidebar/show",
         });
@@ -129,6 +183,7 @@ export class HomeAssistantMain extends LitElement {
       }
     });
 
+    // USERNOTE: Set up notification drawer event listener
     this.addEventListener("hass-show-notifications", () => {
       showNotificationDrawer(this, {
         narrow: this.narrow,
@@ -137,11 +192,23 @@ export class HomeAssistantMain extends LitElement {
   }
 
   public willUpdate(changedProps: PropertyValues) {
+    // USERNOTE: When route changes, ensure the drawer is closed if the sidebar is narrow. This ensures UI consistency
     if (changedProps.has("route") && this._sidebarNarrow) {
       this._drawerOpen = false;
     }
   }
 
+  /**
+   * LLM: Updates component attributes after rendering.
+   *
+   * Purpose: Manages expanded and modal states.
+   *
+   * Caveats & Side Effects:
+   * - Updates expanded attribute based on sidebar state
+   * - Updates modal attribute based on narrow/external state
+   *
+   * Role in Scope: Maintains UI state consistency.
+   */
   protected updated(changedProps: PropertyValues) {
     super.updated(changedProps);
 
@@ -154,10 +221,32 @@ export class HomeAssistantMain extends LitElement {
     );
   }
 
+  /**
+   * LLM: Determines if sidebar should be in narrow mode.
+   *
+   * Purpose: Controls sidebar display mode based on viewport and settings.
+   *
+   * Caveats & Side Effects:
+   * - Combines narrow viewport and always_hidden settings
+   * - Affects drawer and sidebar behavior
+   *
+   * Role in Scope: Manages sidebar display mode.
+   */
   private get _sidebarNarrow() {
     return this.narrow || this.hass.dockedSidebar === "always_hidden";
   }
 
+  /**
+   * LLM: Handles drawer close events.
+   *
+   * Purpose: Resets drawer and edit mode state.
+   *
+   * Caveats & Side Effects:
+   * - Closes drawer
+   * - Exits edit mode
+   *
+   * Role in Scope: Manages drawer state transitions.
+   */
   private _drawerClosed() {
     this._drawerOpen = false;
     this._sidebarEditMode = false;

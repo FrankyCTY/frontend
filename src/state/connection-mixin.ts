@@ -34,6 +34,12 @@ import { promiseTimeout } from "../common/util/promise-timeout";
 import { subscribeFloorRegistry } from "../data/ws-floor_registry";
 import { subscribeEntityRegistryDisplay } from "../data/ws-entity_registry_display";
 
+/**
+ * LLM: Core WebSocket connection and subscription management
+ * Purpose: Establishes and maintains WebSocket connection to Home Assistant backend
+ * Role: Central hub for all real-time data subscriptions
+ * Caveats: Handles connection lifecycle, reconnection, and subscription management
+ */
 export const connectionMixin = <T extends Constructor<HassBaseEl>>(
   superClass: T
 ) =>
@@ -215,16 +221,25 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
       this.hassConnected();
     }
 
+    /**
+     * LLM: Establishes WebSocket subscriptions when connection is established
+     * Purpose: Sets up real-time data subscriptions for various Home Assistant components
+     * Role: Initializes all necessary subscriptions for UI updates
+     * Caveats: Manages connection events and subscription lifecycle
+     */
     protected hassConnected() {
       super.hassConnected();
 
       const conn = this.hass!.connection;
 
+      // USERNOTE: Dispatch connected event to window obj.
       broadcastConnectionStatus("connected");
 
+      // LLM: Connection event handlers
+      // Purpose: Manage connection lifecycle events
+      // Role: Handle connection state changes and errors
       conn.addEventListener("ready", () => this.hassReconnected());
       conn.addEventListener("disconnected", () => this.hassDisconnected());
-      // If we reconnect after losing connection and auth is no longer valid.
       conn.addEventListener("reconnect-error", (_conn, err) => {
         if (err === ERR_INVALID_AUTH) {
           broadcastConnectionStatus("auth-invalid");
@@ -232,7 +247,14 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
         }
       });
 
+      // LLM: Core entity subscription
+      // Purpose: Subscribe to entity state changes
+      // Role: Keep UI in sync with backend state
       subscribeEntities(conn, (states) => this._updateHass({ states }));
+
+      // LLM: Entity registry subscription
+      // Purpose: Subscribe to entity metadata changes
+      // Role: Update entity display information
       subscribeEntityRegistryDisplay(conn, (entityReg) => {
         const entities: HomeAssistant["entities"] = {};
         for (const entity of entityReg.entities) {
@@ -256,6 +278,10 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
         }
         this._updateHass({ entities });
       });
+
+      // LLM: Device registry subscription
+      // Purpose: Subscribe to device information changes
+      // Role: Update device metadata and relationships
       subscribeDeviceRegistry(conn, (deviceReg) => {
         const devices: HomeAssistant["devices"] = {};
         for (const device of deviceReg) {
@@ -263,6 +289,10 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
         }
         this._updateHass({ devices });
       });
+
+      // LLM: Area registry subscription
+      // Purpose: Subscribe to area configuration changes
+      // Role: Update area information and relationships
       subscribeAreaRegistry(conn, (areaReg) => {
         const areas: HomeAssistant["areas"] = {};
         for (const area of areaReg) {
@@ -270,6 +300,10 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
         }
         this._updateHass({ areas });
       });
+
+      // LLM: Floor registry subscription
+      // Purpose: Subscribe to floor configuration changes
+      // Role: Update floor information and relationships
       subscribeFloorRegistry(conn, (floorReg) => {
         const floors: HomeAssistant["floors"] = {};
         for (const floor of floorReg) {
@@ -277,26 +311,40 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
         }
         this._updateHass({ floors });
       });
+
+      // LLM: Core configuration subscription
+      // Purpose: Subscribe to Home Assistant configuration changes
+      // Role: Update UI based on configuration updates
       subscribeConfig(conn, (config) => this._updateHass({ config }));
+
+      // LLM: Services subscription
+      // Purpose: Subscribe to available services
+      // Role: Update service availability and capabilities
       subscribeServices(conn, (services) => this._updateHass({ services }));
+
+      // LLM: Panels subscription
+      // Purpose: Subscribe to panel configuration changes
+      // Role: Update available panels and their settings
       subscribePanels(conn, (panels) => this._updateHass({ panels }));
+
+      // LLM: User data subscription
+      // Purpose: Subscribe to user-specific settings
+      // Role: Update UI based on user preferences
       subscribeFrontendUserData(conn, "core", (userData) =>
         this._updateHass({ userData })
       );
 
+      // LLM: Connection health monitoring
+      // Purpose: Ensure WebSocket connection remains active
+      // Role: Detect and recover from connection issues
       clearInterval(this.__backendPingInterval);
       this.__backendPingInterval = setInterval(() => {
         if (this.hass?.connected) {
-          // If the backend is busy, or the connection is latent,
-          // it can take more than 10 seconds for the ping to return.
-          // We give it a 15 second timeout to be safe.
           promiseTimeout(15000, this.hass?.connection.ping()).catch(() => {
             if (!this.hass?.connected) {
               return;
             }
-
-            // eslint-disable-next-line no-console
-            console.log("Websocket died, forcing reconnect...");
+            console.log("WebSocket died, forcing reconnect...");
             this.hass?.connection.reconnect(true);
           });
         }

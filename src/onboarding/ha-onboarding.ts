@@ -328,6 +328,8 @@ class HaOnboarding extends litLocalizeLiteMixin(HassElement) {
 
       this._steps = steps;
     } catch (_err: any) {
+      // eslint-disable-next-line no-console
+      console.error(_err);
       alert("Something went wrong loading onboarding, try refreshing");
     }
   }

@@ -7,6 +7,10 @@ export interface HassSubscribeElement {
   hassSubscribe(): UnsubscribeFunc[];
 }
 
+// USERNOTE: Mixin manages the subscription to the hass object.
+// - Automatically subscribes when the component is connected
+// - Automatically unsubscribes when the component is disconnected
+// - Handles re-subscription if the connection is lost and restored
 export const SubscribeMixin = <T extends Constructor<ReactiveElement>>(
   superClass: T
 ) => {

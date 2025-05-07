@@ -78,6 +78,18 @@ const PANEL_ICONS = {
   todo: mdiClipboardList,
 };
 
+/**
+ * LLM: Panel sorting function for sidebar organization.
+ *
+ * Purpose: Determines the order of panels in the sidebar based on user preferences and default settings.
+ *
+ * Caveats & Side Effects:
+ * - Uses reverse sort order for custom panel ordering
+ * - Falls back to default panel sorting when custom order is not defined
+ * - Considers language for localized sorting
+ *
+ * Role in Scope: Provides consistent panel ordering in the sidebar.
+ */
 const panelSorter = (
   reverseSort: string[],
   defaultPanel: string,
@@ -85,6 +97,8 @@ const panelSorter = (
   b: PanelInfo,
   language: string
 ) => {
+  // LLM: Compare custom panel order indices
+  // USERNOTE: Reverse Order: User the reverse of the user’s preference array so that a straightforward “lower-index ⇒ lower priority”
   const indexA = reverseSort.indexOf(a.url_path);
   const indexB = reverseSort.indexOf(b.url_path);
   if (indexA !== indexB) {
@@ -93,6 +107,7 @@ const panelSorter = (
     }
     return -1;
   }
+  // LLM: Fall back to default sorting when custom order is not defined
   return defaultPanelSorter(defaultPanel, a, b, language);
 };
 
@@ -139,6 +154,19 @@ const defaultPanelSorter = (
   return stringCompare(a.title!, b.title!, language);
 };
 
+/**
+ * LLM: Computes and organizes panels for sidebar display.
+ *
+ * Purpose: Processes panel information to create an organized sidebar structure.
+ *
+ * Caveats & Side Effects:
+ * - Memoized for performance optimization
+ * - Separates panels into before/after spacer groups
+ * - Filters hidden and untitled panels
+ * - Applies custom sorting order
+ *
+ * Role in Scope: Manages the structure and order of sidebar panels.
+ */
 const computePanels = memoizeOne(
   (
     panels: HomeAssistant["panels"],
@@ -147,28 +175,37 @@ const computePanels = memoizeOne(
     hiddenPanels: string[],
     locale: HomeAssistant["locale"]
   ): [PanelInfo[], PanelInfo[]] => {
+    // LLM: Handle empty panels case
     if (!panels) {
       return [[], []];
     }
 
+    // LLM: Initialize panel groups for before/after spacer
+    // USERNOTE: There are items show upper (above spacer), and below (below spacer but above the bottom separate line)
     const beforeSpacer: PanelInfo[] = [];
     const afterSpacer: PanelInfo[] = [];
 
+    // LLM: Process each panel and categorize based on visibility and position
     Object.values(panels).forEach((panel) => {
+      // LLM: Skip hidden or untitled panels (except default panel)
       if (
         hiddenPanels.includes(panel.url_path) ||
         (!panel.title && panel.url_path !== defaultPanel)
       ) {
         return;
       }
+      // LLM: Categorize panel based on spacer position preference
       (SHOW_AFTER_SPACER.includes(panel.url_path)
         ? afterSpacer
         : beforeSpacer
       ).push(panel);
     });
 
+    // LLM: Prepare reverse sort order for custom panel ordering
+    // USERNOTE: Reverse Order: User the reverse of the user’s preference array so that a straightforward “lower-index ⇒ lower priority”
     const reverseSort = [...panelsOrder].reverse();
 
+    // LLM: Apply sorting to both panel groups
     beforeSpacer.sort((a, b) =>
       panelSorter(reverseSort, defaultPanel, a, b, locale.language)
     );
@@ -301,6 +338,7 @@ class HaSidebar extends SubscribeMixin(LitElement) {
 
   protected firstUpdated(changedProps: PropertyValues) {
     super.firstUpdated(changedProps);
+    // USERNOTE: Subscribe to persistent notifications
     this._subscribePersistentNotifications();
   }
 
@@ -396,6 +434,7 @@ class HaSidebar extends SubscribeMixin(LitElement) {
     </div>`;
   }
 
+  // USERNOTE: Render all panels menu items in the sidebar
   private _renderAllPanels(selectedPanel: string) {
     const [beforeSpacer, afterSpacer] = computePanels(
       this.hass.panels,

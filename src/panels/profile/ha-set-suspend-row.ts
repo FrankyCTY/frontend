@@ -49,6 +49,7 @@ class HaSetSuspendRow extends LitElement {
     if (suspend === this.hass.suspendWhenHidden) {
       return;
     }
+    // USERNOTE: When enabled, tells the frontend to pause certain background work (like websocket updates) whenever the browser tab is not visible.
     fireEvent(this, "hass-suspend-when-hidden", {
       suspend,
     });

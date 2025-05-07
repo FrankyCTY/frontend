@@ -11,6 +11,7 @@ const STORED_STATE = [
   "defaultPanel",
 ];
 
+// USERNOTE: Store the state of the Home Assistant object in the browser's local storage by keys.
 export function storeState(hass: HomeAssistant) {
   try {
     STORED_STATE.forEach((key) => {

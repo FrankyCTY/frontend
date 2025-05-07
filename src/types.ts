@@ -22,6 +22,7 @@ import type {
 import type { Themes } from "./data/ws-themes";
 import type { ExternalMessaging } from "./external_app/external_messaging";
 
+// USERNOTE: This is the global declaration for the build-time variables. (See bundle.cjs e.g.)
 declare global {
   /* eslint-disable no-var, @typescript-eslint/naming-convention */
   var __DEV__: boolean;
