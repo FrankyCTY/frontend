@@ -74,6 +74,15 @@ export interface ConfigEntryExtended extends Omit<ConfigEntry, "entry_id"> {
   localized_domain_name?: string;
 }
 
+/**
+ * LLM: Groups config entries by their integration domain.
+ *
+ * Purpose: Organizes configuration entries into a map where the keys are
+ * integration domains and the values are arrays of config entries for that domain.
+ *
+ * @param entries - The configuration entries to group
+ * @returns A Map with domains as keys and arrays of config entries as values
+ */
 const groupByIntegration = (
   entries: ConfigEntryExtended[]
 ): Map<string, ConfigEntryExtended[]> => {
@@ -87,6 +96,29 @@ const groupByIntegration = (
   });
   return result;
 };
+
+/**
+ * LLM: Dashboard component for managing Home Assistant integrations.
+ *
+ * Purpose: Displays all configured integrations, provides UI for adding new integrations,
+ * and shows integrations that are in the process of being set up. Allows filtering,
+ * searching, and viewing detailed information about each integration.
+ *
+ * Role in Scope: Main content component for the integrations section of the Home Assistant
+ * configuration UI. Handles the presentation and interaction with integration data.
+ *
+ * Features:
+ * - Lists all configured integrations grouped by domain
+ * - Shows in-progress setup flows
+ * - Provides search and filtering capabilities
+ * - Integration with Improv and USB device discovery
+ * - Keyboard shortcuts for common actions
+ *
+ * Caveats & Side Effects:
+ * - Makes multiple API calls to fetch integration manifests, entity sources, etc.
+ * - Subscribes to entity registry and log info updates
+ * - Listens for Improv device discovery events
+ */
 @customElement("ha-config-integrations-dashboard")
 class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
   SubscribeMixin(LitElement)
@@ -103,9 +135,14 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
 
   @property({ attribute: false }) public configEntries?: ConfigEntryExtended[];
 
+  // USERNOTE: An in-progress config flow represents a partially completed integration setup process. It could be triggered by:
+  // - Automatic discovery (e.g., mDNS, DHCP, USB)
+  // - User action (clicked "Add Integration")
+  // - External triggers (e.g., BLE Improv detection)
   @property({ attribute: false })
   public configEntriesInProgress?: DataEntryFlowProgressExtended[];
 
+  // USERNOTE: Track discovered Improv devices which are devices discovered via Bluetooth Improv scanning on mobile or browser.
   @state() private _improvDiscovered = new Map<
     string,
     ImprovDiscoveredDevice
@@ -119,6 +156,7 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
 
   @state() private _domainEntities: Record<string, string[]> = {};
 
+  // USERNOTE: Track which manifests have already been fetched
   private _extraFetchedManifests?: Set<string>;
 
   @state() private _showIgnored = false;
@@ -137,6 +175,11 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
 
   @query("search-input-outlined") private _searchInput!: HTMLElement;
 
+  /**
+   * LLM: Cleanup when component is removed from DOM.
+   *
+   * Removes event listeners for Improv device discovery to prevent memory leaks.
+   */
   public disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener(
@@ -149,6 +192,16 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     );
   }
 
+  /**
+   * LLM: Sets up subscriptions to track entity registry entries and integration log info.
+   *
+   * Purpose: Keeps the component updated with the latest entity registry data and
+   * integration log information, which are used to display entity counts and log
+   * status for each integration.
+   *
+   * Returns an array of unsubscribe functions that will be called when the component
+   * is unmounted.
+   */
   public hassSubscribe(): (UnsubscribeFunc | Promise<UnsubscribeFunc>)[] {
     return [
       subscribeEntityRegistry(this.hass.connection, (entries) => {
@@ -164,6 +217,21 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     ];
   }
 
+  /**
+   * LLM: Filters and organizes config entries for display.
+   *
+   * Purpose: Processes all config entries to:
+   * 1. Include YAML-configured integrations without config entries
+   * 2. Filter entries based on search text
+   * 3. Separate entries into regular, ignored, and disabled categories
+   *
+   * The memoizeOne wrapper ensures this expensive computation only runs when inputs change.
+   *
+   * @returns A tuple containing:
+   * - Grouped entries by domain (for display)
+   * - Ignored entries (for display in ignored section)
+   * - Disabled entries (for display in disabled section)
+   */
   private _filterConfigEntries = memoizeOne(
     (
       components: string[],
@@ -173,20 +241,33 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
       localize: HomeAssistant["localize"],
       filter?: string
     ): [
+      // USERNOTE: Normal config entries [ [domain, entries[]], [domain, entries[]], ... ]
       [string, ConfigEntryExtended[]][],
+      // USERNOTE: Ignored config entries
       ConfigEntryExtended[],
+      // USERNOTE: Disabled config entries
       ConfigEntryExtended[],
     ] => {
+      // LLM: Create a set of domains that already have config entries
       const entryDomains = new Set(configEntries.map((entry) => entry.domain));
 
+      // USERNOTE: YAML-configured integrations (Bad variable name here?)
+      // Defined in YAML, which historically does not create config entries in the HA core, but we still need to create them in UI to align with latest practice
       const domains = new Set<string>();
 
+      // USERNOTE: Classify integrations that are manually defined in YAML (no config flow), and need synthetic entries for UI representation.
+      // - Loaded components that don't have config entries AND
+      // - Does not require config flow AND
+      // - Must be one of integration types: device, hub, service, integration
       for (const component of components) {
         const componentDomain = component.split(".")[0];
         if (
+          // Exclude if the component has config entries
           !entryDomains.has(componentDomain) &&
+          // Exclude if the component has a config flow
           manifests[componentDomain] &&
           !manifests[componentDomain].config_flow &&
+          // Exclude if the component is not one of the integration types that need synthetic entries
           (!manifests[componentDomain].integration_type ||
             ["device", "hub", "service", "integration"].includes(
               manifests[componentDomain].integration_type!
@@ -196,11 +277,13 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
         }
       }
 
+      // LLM: Create fake config entries for YAML-configured integrations
       const nonConfigEntry: ConfigEntryExtended[] = [...domains].map(
         (domain) => ({
           domain,
           localized_domain_name: domainToName(localize, domain),
           title: domain,
+          // USERNOTE: YAML-configured integrations
           source: "yaml",
           state: "loaded",
           supports_options: false,
@@ -218,15 +301,21 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
         })
       );
 
+      // LLM: Combine real config entries and YAML-configured ones, filtering out hardware
+      // integrations without entities to avoid cluttering the UI
       const allEntries = [
+        // USERNOTE: Integrations with config entries
         ...configEntries.filter(
           (entry) =>
             entry.supports_options ||
             this._manifests[entry.domain]?.integration_type !== "hardware" ||
+            // FIXME: Why is it OR condition? Isn't we want to ensure they have config entries?
+            // USERNOTE: Only include integrations that have config entri(es)
             entityEntries.some(
               (entity) => entity.config_entry_id === entry.entry_id
             )
         ),
+        // USERNOTE: Integration without config entry (YAML-configured integrations)
         ...nonConfigEntry,
       ];
 
@@ -234,6 +323,8 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
       const ignored: ConfigEntryExtended[] = [];
       const disabled: ConfigEntryExtended[] = [];
       const integrations: ConfigEntryExtended[] = [];
+
+      // LLM: Apply text filtering if a search term is provided
       if (filter) {
         const options: IFuseOptions<ConfigEntryExtended> = {
           keys: ["domain", "localized_domain_name", "title"],
@@ -249,6 +340,7 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
         filteredConfigEntries = allEntries;
       }
 
+      // LLM: Categorize entries into ignored, disabled, and active integrations
       for (const entry of filteredConfigEntries) {
         if (entry.source === "ignore") {
           ignored.push(entry);
@@ -258,9 +350,17 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
           integrations.push(entry);
         }
       }
+
+      // LLM: Return entries grouped by domain and sorted alphabetically by localized name
       return [
+        // USERNOTE: groupByIntegration -> { [domain]: [entries of that domain] }
+        // USERNOTE: Array.from({...}) -> [ [domain, entries[]], [domain, entries[]], ... ]
         Array.from(groupByIntegration(integrations)).sort((groupA, groupB) =>
+          // USERNOTE: Sorts the array of [domain, entries[]] by the localized name of each integration, so that they appear alphabetically in the UI, based on human-readable names (not internal domains).
           caseInsensitiveStringCompare(
+            // USERNOTE: From each group, find the name using the order of:
+            // - 1. Domain's 1st entry's localized_domain_name
+            // - 2. Domain's name
             groupA[1][0].localized_domain_name || groupA[0],
             groupB[1][0].localized_domain_name || groupB[0],
             this.hass.locale.language
@@ -272,18 +372,47 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     }
   );
 
+  /**
+   * LLM: Filters and processes in-progress configuration flows, including Improv device discovery.
+   *
+   * Purpose: Manages the display of configuration flows by:
+   * - Filtering out duplicate flows between mobile and local Bluetooth discovery
+   * - Adding mobile-discovered Improv devices to the flow list
+   * - Applying text search filtering if specified
+   * - Sorting flows alphabetically by localized title
+   *
+   * Role in Scope: Acts as a coordinator between device discovery systems
+   * (Improv, mobile, local) and the UI, ensuring a consistent view of
+   * available configuration flows.
+   *
+   * Caveats & Side Effects:
+   * - May modify the list of in-progress flows
+   * - Handles special cases for Improv device discovery
+   * - Uses fuzzy search for text filtering
+   * - Affects UI rendering through sorting and filtering
+   *
+   * @param configEntriesInProgress - Current list of in-progress configuration flows
+   * @param improvDiscovered - Map of discovered Improv devices
+   * @param filter - Optional search text to filter flows
+   * @returns Filtered and sorted list of configuration flows
+   */
   private _filterConfigEntriesInProgress = memoizeOne(
     (
       configEntriesInProgress: DataEntryFlowProgressExtended[],
       improvDiscovered: Map<string, ImprovDiscoveredDevice>,
       filter?: string
     ): DataEntryFlowProgressExtended[] => {
+      // LLM: Start with a copy of current in-progress flows
       let inProgress = [...configEntriesInProgress];
 
+      // LLM: Get array of discovered Improv devices for easier processing
       const improvDiscoveredArray = Array.from(improvDiscovered.values());
 
+      // USERNOTE: This block ensures that when a device is discovered both via the backend (native discovery) and via Improv BLE (frontend Bluetooth scan), only the Improv version is shown in the UI.
+      // - Improv BLE setup (via mobile/browser) offers a better user experience for certain ESP-based devices.
       if (improvDiscoveredArray.length) {
         // filter out native flows that have been discovered by both mobile and local bluetooth
+        // USERNOTE: Removes any duplicate flows that have duplicated discvoery, we will re-add them as synthetic Improv BLE flows below
         inProgress = inProgress.filter(
           (flow) =>
             !improvDiscoveredArray.some(
@@ -292,6 +421,8 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
         );
 
         // add mobile flows to the list
+        // USERNOTE: Adds synthetic Improv BLE flows.
+        // - Synthetic as they are discovered from mobile/browser app, not from backend
         improvDiscovered.forEach((discovered) => {
           inProgress.push({
             flow_id: "external",
@@ -307,8 +438,10 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
         });
       }
 
+      // LLM: Apply text search filtering if a filter is provided
       let filteredEntries: DataEntryFlowProgressExtended[];
       if (filter) {
+        // LLM: Configure fuzzy search for better matching
         const options: IFuseOptions<DataEntryFlowProgressExtended> = {
           keys: ["handler", "localized_title"],
           isCaseSensitive: false,
@@ -321,8 +454,12 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
       } else {
         filteredEntries = inProgress;
       }
+
+      // LLM: Sort flows alphabetically by localized title
+      // Uses case-insensitive comparison and respects the user's locale
       return filteredEntries.sort((a, b) =>
         caseInsensitiveStringCompare(
+          // USERNOTE: handler: The domain name of the handler of the flow
           a.localized_title || a.handler,
           b.localized_title || b.handler,
           this.hass.locale.language
@@ -331,16 +468,35 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     }
   );
 
+  /**
+   * LLM: Lifecycle method that runs after the component is first updated.
+   *
+   * Purpose: Initializes the component by:
+   * - Fetching integration manifests and entity sources
+   * - Handling initial route if it's the add integration page
+   * - Scanning for USB and Improv devices
+   * - Loading diagnostic handlers if diagnostics component is available
+   *
+   * Side Effects:
+   * - Makes multiple API calls
+   * - Sets up device scanning
+   * - Updates component state
+   */
   protected firstUpdated(changed: PropertyValues) {
     super.firstUpdated(changed);
+    // USERNOTE: Fetch all relevant? manifests
     this._fetchManifests();
+    // USERNOTE: Fetch all relevant? entity sources
     this._fetchEntitySources();
     if (this.route.path === "/add") {
       this._handleAdd();
     }
+    // USERNOTE: Scan for USB devices (device discovery workflows)
     this._scanUSBDevices();
+    // USERNOTE: Scan for Improv devices (device discovery workflows)
+    // - Improv: A protocol developed by the Home Assistant community to make it easier to provision and onboard Wi-Fi-enabled microcontrollers
     this._scanImprovDevices();
-
+    // USERNOTE: Fetch diagnostic handlers
     if (isComponentLoaded(this.hass, "diagnostics")) {
       fetchDiagnosticHandlers(this.hass).then((infos) => {
         const handlers = {};
@@ -352,8 +508,29 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     }
   }
 
+  /**
+   * LLM: Lifecycle method that handles post-update tasks for the integrations dashboard.
+   *
+   * Purpose: Processes component updates to maintain UI state and data consistency:
+   * - Handles deep linking to specific integrations via URL parameters
+   * - Ensures integration manifests are loaded for new configurations
+   * - Manages state updates for configuration flows and entries
+   *
+   * Role in Scope: Acts as a coordinator between URL state, configuration data,
+   * and UI presentation. Ensures the dashboard stays in sync with the backend
+   * state and user navigation.
+   *
+   * Caveats & Side Effects:
+   * - May trigger UI updates through _highlightEntry()
+   * - Makes API calls to fetch integration manifests
+   * - Updates component state through _fetchIntegrationManifests()
+   * - Affects UI rendering through state changes
+   */
   protected updated(changed: PropertyValues) {
     super.updated(changed);
+
+    // LLM: Handle deep linking to specific integration entries
+    // Checks if URL contains config_entry or domain parameters and if config entries are loaded
     if (
       (this._searchParms.has("config_entry") ||
         this._searchParms.has("domain")) &&
@@ -363,21 +540,47 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     ) {
       this._highlightEntry();
     }
+
+    // LLM: Load manifests for new configuration flows
+    // Ensures we have manifest data for any in-progress configuration flows
     if (
       changed.has("configEntriesInProgress") &&
       this.configEntriesInProgress
     ) {
+      // USERNOTE: Fetch manifests for new configuration flows only if they are not already in the extraFetchedManifests set
       this._fetchIntegrationManifests(
         this.configEntriesInProgress.map((flow) => flow.handler)
       );
     }
+
+    // LLM: Load manifests for new configuration entries
+    // Ensures we have manifest data for any newly added integrations
     if (changed.has("configEntries") && this.configEntries) {
+      // USERNOTE: Fetch manifests for new configuration entries only if they are not already in the extraFetchedManifests set
       this._fetchIntegrationManifests(
         this.configEntries.map((entry) => entry.domain)
       );
     }
   }
 
+  /**
+   * LLM: Main render method for the integrations dashboard.
+   *
+   * Purpose: Renders the complete UI for the integrations dashboard, including:
+   * - Loading screen if data isn't ready
+   * - Search and filter controls
+   * - Sections for discovered, ignored, disabled, and configured integrations
+   * - Add integration FAB button
+   *
+   * The UI is organized into sections:
+   * 1. Ignored integrations (if shown)
+   * 2. Discovered integrations (in-progress flows)
+   * 3. Disabled integrations (if shown)
+   * 4. Configured integrations
+   *
+   * Each section uses appropriate card components to display the integrations
+   * and their status.
+   */
   protected render() {
     if (!this.configEntries || !this.configEntriesInProgress) {
       return html`<hass-loading-screen
@@ -662,6 +865,19 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     ev.preventDefault();
   }
 
+  /**
+   * LLM: Scans for USB devices that can be integrated.
+   *
+   * Purpose: Initiates a scan for USB devices that can be integrated into Home Assistant.
+   * Only runs if the USB component is loaded.
+   *
+   * Side Effects:
+   * - Makes API call to scan USB devices
+   * - May trigger discovery of new integrations
+   *
+   * USERNOTE: Example:
+   * - Zigbee Dongles, Z-Wave Controllers, USB-to-Ethernet bridges, RF or Bluetooth dongles	 e.g.
+   */
   private async _scanUSBDevices() {
     if (!isComponentLoaded(this.hass, "usb")) {
       return;
@@ -669,6 +885,17 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     await scanUSBDevices(this.hass);
   }
 
+  /**
+   * LLM: Initiates scanning for Improv devices.
+   *
+   * Purpose: Sets up event listeners and starts scanning for Improv-compatible
+   * devices that can be integrated. Only runs if the external auth config
+   * supports Improv setup.
+   *
+   * Side Effects:
+   * - Adds event listeners for device discovery
+   * - Sends message to external auth to start scanning
+   */
   private _scanImprovDevices() {
     if (!this.hass.auth.external?.config.canSetupImprov) {
       return;
@@ -689,6 +916,16 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     });
   }
 
+  /**
+   * LLM: Rescans for Improv devices after setup completion.
+   *
+   * Purpose: Clears existing discovered devices and initiates a new scan
+   * after a device setup is completed.
+   *
+   * Side Effects:
+   * - Clears _improvDiscovered state
+   * - Triggers new device scan
+   */
   private _reScanImprovDevices = () => {
     if (!this.hass.auth.external?.config.canSetupImprov) {
       return;
@@ -699,6 +936,16 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     });
   };
 
+  /**
+   * LLM: Handles discovery of new Improv devices.
+   *
+   * Purpose: Processes newly discovered Improv devices and updates the UI
+   * to show them as available for integration.
+   *
+   * Side Effects:
+   * - Updates _improvDiscovered state
+   * - May trigger manifest fetching for new device type
+   */
   private _handleImprovDiscovered = (ev) => {
     this._fetchManifests(["improv_ble"]);
     this._improvDiscovered.set(ev.detail.name, ev.detail);
@@ -706,6 +953,15 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     this._improvDiscovered = new Map(Array.from(this._improvDiscovered));
   };
 
+  /**
+   * LLM: Fetches entity sources to determine which entities belong to which integration.
+   *
+   * Purpose: Maps entity IDs to their source domains to determine which entities
+   * are provided by this integration, even if their entity_id has a different domain prefix.
+   *
+   * Side Effects:
+   * - Updates _domainEntities state with mapping of domains to entity IDs
+   */
   private async _fetchEntitySources() {
     const entitySources = await fetchEntitySourcesWithCache(this.hass);
 
@@ -715,12 +971,24 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
       if (!(source.domain in entitiesByDomain)) {
         entitiesByDomain[source.domain] = [];
       }
+      // USERNOTE: Group entities by domain
+      // {[domain]: [entities...]}
       entitiesByDomain[source.domain].push(entity);
     }
 
     this._domainEntities = entitiesByDomain;
   }
 
+  /**
+   * LLM: Fetches integration manifests for specified integrations.
+   *
+   * Purpose: Loads manifest data for integrations, which contains metadata like
+   * version, documentation URL, and integration type.
+   *
+   * Side Effects:
+   * - Updates _manifests state with new manifest data
+   * - May trigger UI updates to show integration details
+   */
   private async _fetchManifests(integrations?: string[]) {
     const fetched = await fetchIntegrationManifests(this.hass, integrations);
     // Make a copy so we can keep track of previously loaded manifests
@@ -732,29 +1000,69 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     this._manifests = manifests;
   }
 
+  /**
+   * LLM: Fetches integration manifests for a list of integrations, avoiding duplicate fetches.
+   *
+   * Purpose: Efficiently loads manifest data for integrations by:
+   * - Tracking which manifests have already been fetched
+   * - Only requesting manifests that haven't been loaded yet
+   * - Maintaining a cache of previously fetched manifests
+   *
+   * Role in Scope: Acts as a manifest cache manager, ensuring we have the necessary
+   * metadata for integrations while minimizing redundant API calls.
+   *
+   * Caveats & Side Effects:
+   * - Makes API calls to fetch missing manifests
+   * - Updates _manifests state with new manifest data
+   * - Maintains _extraFetchedManifests set to track fetched manifests
+   * - May trigger UI updates through state changes
+   *
+   * @param integrations - Array of integration domains to fetch manifests for
+   */
   private async _fetchIntegrationManifests(integrations: string[]) {
+    // LLM: Track which manifests we need to fetch
     const manifestsToFetch: string[] = [];
+
+    // LLM: Filter out integrations that already have manifests
     for (const integration of integrations) {
+      // Skip if manifest is already in _manifests
       if (integration in this._manifests) {
         continue;
       }
+
       if (this._extraFetchedManifests) {
+        // LLM: Skip if manifest was already fetched in a previous call
         if (this._extraFetchedManifests.has(integration)) {
           continue;
         }
       } else {
+        // LLM: Initialize tracking set if it doesn't exist
         this._extraFetchedManifests = new Set();
       }
+
+      // LLM: Add to tracking set and fetch list
       this._extraFetchedManifests.add(integration);
       manifestsToFetch.push(integration);
     }
+
+    // LLM: Only make API call if we have manifests to fetch
     if (manifestsToFetch.length) {
       await this._fetchManifests(manifestsToFetch);
     }
   }
 
+  /**
+   * LLM: Handles updates to integration flows.
+   *
+   * Purpose: Refreshes the list of in-progress configuration flows
+   * when a flow is updated or completed.
+   *
+   * Side Effects:
+   * - Fetches updated list of config entries in progress
+   */
   private _handleFlowUpdated() {
     this._reScanImprovDevices();
+    // USERNOTE: Fetch all relevant? manifests
     this._fetchManifests();
   }
 
@@ -785,6 +1093,7 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
   }
 
   private async _highlightEntry() {
+    // USERNOTE: Wait for next render to ensure DOM is updated (after 1+ frames and also is at least 2 event loop ticks)
     await nextRender();
     const entryId = this._searchParms.get("config_entry");
     let domain: string | null;
@@ -810,6 +1119,25 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     }
   }
 
+  /**
+   * LLM: Handles the add integration flow.
+   *
+   * Purpose: Processes the add integration request, which can be triggered by:
+   * - Direct navigation to /add
+   * - Clicking the add integration button
+   * - Brand-specific deep links
+   *
+   * The method handles various cases:
+   * - Brand-specific integration flows
+   * - Domain-specific integration flows
+   * - Helper domain flows
+   * - Error cases for unsupported integrations
+   *
+   * Side Effects:
+   * - May show various dialogs
+   * - May navigate to different routes
+   * - May trigger integration setup flows
+   */
   private async _handleAdd() {
     const brand = extractSearchParam("brand");
     const domain = extractSearchParam("domain");
@@ -1065,7 +1393,7 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
           min-width: 20px;
           box-sizing: border-box;
           border-radius: 50%;
-          font-weight: 400;
+          font-weight: var(--ha-font-weight-normal);
           background-color: var(--primary-color);
           line-height: 20px;
           text-align: center;

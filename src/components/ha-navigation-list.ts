@@ -9,6 +9,23 @@ import "./ha-svg-icon";
 import "./ha-md-list";
 import "./ha-md-list-item";
 
+/**
+ * LLM: A flexible navigation list component for Home Assistant.
+ *
+ * Purpose: Creates a consistent, styled list of navigation items that can be used
+ * throughout the Home Assistant UI. Handles rendering navigation pages as list items
+ * with icons, labels, and descriptions.
+ *
+ * Role in Scope: Provides a standardized UI component for navigation across different
+ * sections of the UI, maintaining visual consistency while being customizable.
+ *
+ * Features:
+ * - Renders navigation items with icons and optional descriptions
+ * - Handles both internal navigation and external app configurations
+ * - Applies consistent styling across navigation items
+ * - Adapts layout based on screen width (narrow mode)
+ * - Ensures proper accessibility attributes
+ */
 @customElement("ha-navigation-list")
 class HaNavigationList extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -22,6 +39,17 @@ class HaNavigationList extends LitElement {
 
   @property() public label?: string;
 
+  /**
+   * LLM: Renders a list of navigation items based on the provided pages.
+   *
+   * Each item includes:
+   * - An icon with optional background color
+   * - A primary label
+   * - An optional secondary description
+   * - A "next" icon on wider screens
+   *
+   * Special handling for external app configuration items is included.
+   */
   public render(): TemplateResult {
     return html`
       <ha-md-list
@@ -30,6 +58,7 @@ class HaNavigationList extends LitElement {
         innerAriaLabel=${ifDefined(this.label)}
       >
         ${this.pages.map((page) => {
+          // LLM: Check if this is an external app configuration item, which needs special handling
           const externalApp = page.path.endsWith("#external-app-configuration");
           return html`
             <ha-md-list-item
@@ -58,10 +87,24 @@ class HaNavigationList extends LitElement {
     `;
   }
 
+  /**
+   * LLM: Handles click events for external app configuration items.
+   *
+   * Fires a message to the external auth system to show the configuration screen.
+   * This allows companion apps to display their own configuration UI within Home Assistant.
+   */
   private _handleExternalApp() {
     this.hass.auth.external!.fireMessage({ type: "config_screen/show" });
   }
 
+  /**
+   * LLM: Component styles for the navigation list.
+   *
+   * Key styling features:
+   * - Consistent icon sizing and colors
+   * - Special styling for icons with background colors
+   * - Controls the font size of list items
+   */
   static styles: CSSResultGroup = css`
     ha-svg-icon,
     ha-icon-next {

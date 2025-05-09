@@ -57,7 +57,31 @@ declare global {
   }
 }
 
-// USERNOTE: Navigation items UI configuration
+/**
+ * LLM: Configuration sections definition for Home Assistant UI.
+ *
+ * Purpose: Defines all navigation items that appear in the configuration UI,
+ * organized by section. Each item specifies its path, icon, color, and requirements.
+ *
+ * Role in Scope: Central definition of the entire Home Assistant configuration UI structure.
+ * This object feeds into various navigation components and determines what appears in
+ * each section of the configuration UI.
+ *
+ * Structure:
+ * - dashboard: Main items on the configuration dashboard
+ * - backup: Backup-related configuration
+ * - devices: Device and entity management
+ * - automations: Automation and scene configuration
+ * - ... and more sections
+ *
+ * Each item contains:
+ * - path: URL path for navigation
+ * - translationKey: Key for i18n text
+ * - iconPath: Material Design icon path
+ * - iconColor: Brand color for the icon
+ * - component: Required component(s) for the item to be shown (optional)
+ * - core: Whether it's a core feature (optional)
+ */
 export const configSections: Record<string, PageNavigation[]> = {
   dashboard: [
     {

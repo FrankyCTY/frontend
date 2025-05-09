@@ -51,6 +51,16 @@ import "./ha-config-navigation";
 import "./ha-config-updates";
 import { showShortcutsDialog } from "../../../dialogs/shortcuts/show-shortcuts-dialog";
 
+/**
+ * LLM: Utility function that generates a random tip to display on the dashboard.
+ *
+ * Purpose: Provides helpful tips to users about Home Assistant features and community resources.
+ *
+ * @param openFn - Function to open the shortcuts dialog
+ * @param hass - HomeAssistant instance for localization and context
+ * @param narrow - Boolean indicating if the UI is in narrow/mobile mode
+ * @returns A randomly selected tip as HTML content, weighted by importance
+ */
 const randomTip = (openFn: any, hass: HomeAssistant, narrow: boolean) => {
   const weighted: string[] = [];
   let tips = [
@@ -106,6 +116,7 @@ const randomTip = (openFn: any, hass: HomeAssistant, narrow: boolean) => {
     },
   ];
 
+  // LLM: Add keyboard shortcut tips only if shortcuts are enabled and not on mobile
   if (hass?.enableShortcuts && !isMobileClient) {
     const localizeParam = {
       keyboard_shortcut: html`<a href="#" @click=${openFn}
@@ -132,10 +143,12 @@ const randomTip = (openFn: any, hass: HomeAssistant, narrow: boolean) => {
     );
   }
 
+  // LLM: Filter tips to only show those that work in narrow mode if we're in narrow mode
   if (narrow) {
     tips = tips.filter((tip) => tip.narrow);
   }
 
+  // LLM: Create a weighted array where tips with higher weight appear more frequently
   tips.forEach((tip) => {
     for (let i = 0; i < tip.weight; i++) {
       weighted.push(tip.content);
@@ -145,6 +158,22 @@ const randomTip = (openFn: any, hass: HomeAssistant, narrow: boolean) => {
   return weighted[Math.floor(Math.random() * weighted.length)];
 };
 
+/**
+ * LLM: Main configuration dashboard component for Home Assistant.
+ *
+ * Purpose: Serves as the primary entry point for all configuration options in Home Assistant.
+ * Displays system status information, available updates, repair issues, and navigation to
+ * various configuration sections.
+ *
+ * Role in Scope: Central hub for accessing all configuration-related functionality.
+ *
+ * Features:
+ * - Shows repair issues that need attention
+ * - Displays available updates for entities
+ * - Provides navigation to all configuration sections
+ * - Shows helpful tips to users
+ * - Includes quick actions for common tasks (check updates, restart)
+ */
 @customElement("ha-config-dashboard")
 class HaConfigDashboard extends SubscribeMixin(LitElement) {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -164,8 +193,15 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
     total: 0,
   };
 
+  /**
+   * LLM: Memoized function to generate navigation pages for the config dashboard.
+   * Conditionally includes the cloud page if the cloud component is loaded.
+   *
+   * @returns Array of PageNavigation objects representing available config sections
+   */
   private _pages = memoizeOne((cloudStatus, isCloudLoaded) => {
     const pages: PageNavigation[] = [];
+    // LLM: Only include the cloud configuration option if the cloud component is loaded
     if (isCloudLoaded) {
       pages.push({
         component: "cloud",
@@ -177,21 +213,33 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
         translationKey: "cloud",
       });
     }
+    // LLM: Combine cloud pages (if any) with the standard dashboard sections defined in configSections
     return [...pages, ...configSections.dashboard];
   });
 
+  /**
+   * LLM: Subscribes to the repairs issue registry to display system issues.
+   *
+   * Purpose: Keeps track of system issues that need attention and displays them
+   * on the dashboard, sorted by severity.
+   *
+   * Side Effects: Loads translations for the domains of the issues.
+   */
   public hassSubscribe(): UnsubscribeFunc[] {
     return [
       subscribeRepairsIssueRegistry(this.hass.connection!, (repairs) => {
+        // LLM: Filter out ignored issues
         const repairsIssues = repairs.issues.filter((issue) => !issue.ignored);
 
         this._repairsIssues = {
+          // LLM: Sort issues by severity and take up to 2 issues (or all 3 if there are exactly 3)
           issues: repairsIssues
             .sort((a, b) => severitySort[a.severity] - severitySort[b.severity])
             .slice(0, repairsIssues.length === 3 ? repairsIssues.length : 2),
           total: repairsIssues.length,
         };
 
+        // LLM: Load translations for all domains that have issues
         const integrations = new Set<string>();
         for (const issue of this._repairsIssues.issues) {
           integrations.add(issue.domain);
@@ -201,7 +249,18 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
     ];
   }
 
+  /**
+   * LLM: Renders the configuration dashboard UI.
+   *
+   * Structure:
+   * 1. App bar with menu, title and action buttons
+   * 2. Repairs issues card (if any issues exist)
+   * 3. Updates card (if any updates available)
+   * 4. Navigation card with links to all config sections
+   * 5. Random tip at the bottom
+   */
   protected render(): TemplateResult {
+    // LLM: Get update entities that can be installed and filter them
     const { updates: canInstallUpdates, total: totalUpdates } =
       this._filterUpdateEntitiesWithInstall(
         this.hass.states,
@@ -251,6 +310,7 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
           .isWide=${this.isWide}
           full-width
         >
+          <!-- LLM: Conditionally render the repairs/updates card only if there are issues or updates -->
           ${repairsIssues.length || canInstallUpdates.length
             ? html`<ha-card outlined>
                 ${repairsIssues.length
@@ -261,6 +321,7 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
                         .total=${totalRepairIssues}
                         .repairsIssues=${repairsIssues}
                       ></ha-config-repairs>
+                      <!-- LLM: Show "more repairs" chip if not all issues are displayed -->
                       ${totalRepairIssues > repairsIssues.length
                         ? html`
                             <ha-assist-chip
@@ -278,6 +339,7 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
                         : ""}
                     `
                   : ""}
+                <!-- LLM: Add a divider between repairs and updates sections if both exist -->
                 ${repairsIssues.length && canInstallUpdates.length
                   ? html`<hr />`
                   : ""}
@@ -289,6 +351,7 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
                         .total=${totalUpdates}
                         .updateEntities=${canInstallUpdates}
                       ></ha-config-updates>
+                      <!-- LLM: Show "more updates" chip if not all updates are displayed -->
                       ${totalUpdates > canInstallUpdates.length
                         ? html`
                             <ha-assist-chip
@@ -309,6 +372,7 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
               </ha-card>`
             : ""}
 
+          <!-- LLM: Navigation card with links to all configuration sections -->
           <ha-card outlined>
             <ha-config-navigation
               .hass=${this.hass}
@@ -320,12 +384,17 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
               )}
             ></ha-config-navigation>
           </ha-card>
+          <!-- LLM: Random tip shown at the bottom of the dashboard -->
           <ha-tip .hass=${this.hass}>${this._tip}</ha-tip>
         </ha-config-section>
       </ha-top-app-bar-fixed>
     `;
   }
 
+  /**
+   * LLM: Lifecycle method called when component properties change.
+   * Initializes the random tip when the hass object becomes available.
+   */
   protected override updated(changedProps: PropertyValues): void {
     super.updated(changedProps);
 
@@ -334,28 +403,47 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
     }
   }
 
+  /**
+   * LLM: Opens the keyboard shortcuts dialog when a user clicks on the shortcut link in tips.
+   */
   private _openShortcutDialog(ev: Event) {
     ev.preventDefault();
 
     showShortcutsDialog(this);
   }
 
+  /**
+   * LLM: Memoized function to filter and prepare update entities for display.
+   *
+   * Purpose: Filters update entities that can be installed and aren't hidden,
+   * then limits the number shown based on the total count.
+   *
+   * @returns Object containing filtered updates and total count
+   */
   private _filterUpdateEntitiesWithInstall = memoizeOne(
     (
       entities: HomeAssistant["states"],
       entityRegistry: HomeAssistant["entities"]
     ): { updates: UpdateEntity[]; total: number } => {
+      // LLM: Get entities that can be installed and aren't hidden in the registry
       const updates = filterUpdateEntitiesWithInstall(entities).filter(
         (entity) => !entityRegistry[entity.entity_id]?.hidden
       );
 
       return {
+        // LLM: Show up to 2 updates (or all 3 if there are exactly 3)
         updates: updates.slice(0, updates.length === 3 ? updates.length : 2),
         total: updates.length,
       };
     }
   );
 
+  /**
+   * LLM: Shows the quick bar dialog with command mode.
+   *
+   * Purpose: Provides quick access to commands and actions in Home Assistant.
+   * Includes a hint about keyboard shortcuts if they're enabled.
+   */
   private _showQuickBar(): void {
     const params = {
       keyboard_shortcut: html`<a href="#" @click=${this._openShortcutDialog}
@@ -371,6 +459,13 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
     });
   }
 
+  /**
+   * LLM: Handles actions from the menu button in the app bar.
+   *
+   * Purpose: Processes user selections from the dropdown menu:
+   * - Index 0: Check for entity updates
+   * - Index 1: Show restart dialog
+   */
   private async _handleMenuAction(ev: CustomEvent<ActionDetail>) {
     switch (ev.detail.index) {
       case 0:
@@ -382,6 +477,15 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
     }
   }
 
+  /**
+   * LLM: Component styles for the configuration dashboard.
+   *
+   * Key styling features:
+   * - Responsive layout with special handling for mobile/narrow view
+   * - Safe area insets for bottom margin (especially important on mobile)
+   * - Card styling with consistent margins and overflow handling
+   * - Special styling for links, chips, and dividers
+   */
   static get styles(): CSSResultGroup {
     return [
       haStyle,
@@ -450,6 +554,10 @@ class HaConfigDashboard extends SubscribeMixin(LitElement) {
   }
 }
 
+/**
+ * LLM: TypeScript declaration to register the custom element with the browser.
+ * This ensures proper type checking when using the element in HTML.
+ */
 declare global {
   interface HTMLElementTagNameMap {
     "ha-config-dashboard": HaConfigDashboard;

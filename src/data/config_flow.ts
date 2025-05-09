@@ -8,6 +8,7 @@ import type {
 import type { IntegrationType } from "./integration";
 import { domainToName } from "./integration";
 
+// FIXME: No improv BLE discovery, Home Assistant does not tracking BLE ignores persistently I think since it is synthetic and discovered from the frontend (mobile/browser).
 export const DISCOVERY_SOURCES = [
   "bluetooth",
   "dhcp",

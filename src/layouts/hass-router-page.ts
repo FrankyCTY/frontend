@@ -119,10 +119,11 @@ export class HassRouterPage extends ReactiveElement {
     console.log("hass-router-page: update() - route change", route);
     const defaultPage = routerOptions.defaultPage;
 
-    // USERNOTE: If route path is root, re-navigate to default page.
+    // USERNOTE: If route path is root of the router/subrouter, re-navigate to default page of that router/subrouter.
     // Example:
     // If the route has no path (i.e., /config, where route.path === "", prefix: /config)
-    // And a defaultPage is set in routerOptions → then navigate.
+    // It means we are on the root of the router/subrouter
+    // And we should look up from the corresponding routerOptions to route to the defaultPage.
     if (route && route.path === "" && defaultPage !== undefined) {
       const queryParams = window.location.search;
       // USERNOTE: Navigate to the default page. (e.g. /config/dashboard for config panel)

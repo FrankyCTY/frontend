@@ -133,8 +133,6 @@ class PartialPanelResolver extends HassRouterPage {
     }
 
     const oldHass = changedProps.get("hass") as this["hass"];
-    // eslint-disable-next-line no-console
-    console.log("===== OLD HASS =====", oldHass);
 
     // LLM: If _waitForStart is true and the system transitions to a usable state (STARTING or RUNNING), it triggers a rebuild():
     // This clears and reassigns the route (this.route) after updateComplete, forcing the panel view to reinitialize once the system is ready.

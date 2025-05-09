@@ -28,6 +28,8 @@ export interface DataEntryFlowProgressEvent {
 
 export interface DataEntryFlowProgress {
   flow_id: string;
+  // USERNOTE: The handler is the domain of the integration that is being configured to handle the conig flow.
+  // - This is the same as the domain of the integration manifest
   handler: string;
   step_id: string;
   context: {

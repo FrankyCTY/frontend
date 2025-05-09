@@ -107,14 +107,32 @@ export const filterUpdateEntitiesWithInstall = (
     updateCanInstall(entity, showSkipped)
   );
 
+/**
+ * LLM: Initiates a check for updates across all update entities in Home Assistant.
+ *
+ * Purpose: Provides a way to manually refresh all update entities to check for
+ * new versions without having to wait for the automatic background check.
+ *
+ * Caveats & Side Effects:
+ * - Shows toast notifications during the process
+ * - May show an alert dialog if no update entities are found
+ * - Waits 15 seconds for updates to complete (arbitrary timeout)
+ * - Subscribes to state change events temporarily
+ *
+ * Role in Scope: This function is the main entry point for the "Check for updates"
+ * action in the Home Assistant UI. It's typically triggered from the config dashboard
+ * or other areas where updates are managed.
+ */
 export const checkForEntityUpdates = async (
   element: HTMLElement,
   hass: HomeAssistant
 ) => {
+  // LLM: Get all update entities, sorted by importance (Core first, then OS, then Supervisor, then others)
   const entities = filterUpdateEntities(hass.states, hass.locale.language).map(
     (entity) => entity.entity_id
   );
 
+  // LLM: If no update entities are found, show an alert dialog and exit early
   if (!entities.length) {
     showAlertDialog(element, {
       title: hass.localize("ui.panel.config.updates.no_update_entities.title"),
@@ -126,12 +144,14 @@ export const checkForEntityUpdates = async (
     return;
   }
 
+  // LLM: Show initial toast notification to inform user that update check has started
   showToast(element, {
     message: hass.localize("ui.panel.config.updates.checking_updates"),
   });
 
   let updated = 0;
 
+  // LLM: Subscribe to state change events to track update entities that get refreshed
   const unsubscribeEvents = await hass.connection.subscribeEvents<HassEvent>(
     (event) => {
       if (computeDomain(event.data.entity_id) === "update") {
@@ -146,6 +166,7 @@ export const checkForEntityUpdates = async (
     "state_changed"
   );
 
+  // LLM: Call the update_entity service for all update entities to force them to check for updates
   await hass.callService("homeassistant", "update_entity", {
     entity_id: entities,
   });
@@ -155,8 +176,10 @@ export const checkForEntityUpdates = async (
     setTimeout(r, 15000);
   });
 
+  // LLM: Unsubscribe from state change events to clean up
   unsubscribeEvents();
 
+  // LLM: If no entities were updated during the process, show a "no new updates" toast
   if (updated === 0) {
     showToast(element, {
       message: hass.localize("ui.panel.config.updates.no_new_updates"),

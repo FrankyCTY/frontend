@@ -110,12 +110,23 @@ import { showAddIntegrationDialog } from "./show-add-integration-dialog";
 import { QUALITY_SCALE_MAP } from "../../../data/integration_quality_scale";
 import { showSubConfigFlowDialog } from "../../../dialogs/config-flow/show-dialog-sub-config-flow";
 
+/**
+ * LLM: Helper function to render error messages for config entries.
+ *
+ * Purpose: Displays localized error messages for configuration entries that have errors.
+ * Attempts to load domain-specific error translations if available.
+ *
+ * @param hass - HomeAssistant instance for localization functions
+ * @param entry - The config entry with an error
+ * @returns A template result with the localized error message
+ */
 export const renderConfigEntryError = (
   hass: HomeAssistant,
   entry: ConfigEntry
 ): TemplateResult => {
   if (entry.reason) {
     if (entry.error_reason_translation_key) {
+      // LLM: First try to use exception translation keys specific to the integration
       const lokalisePromExc = hass
         .loadBackendTranslation("exceptions", entry.domain)
         .then(
@@ -127,6 +138,7 @@ export const renderConfigEntryError = (
         );
       return html`${until(lokalisePromExc)}`;
     }
+    // LLM: Fall back to general config error translation keys
     const lokalisePromError = hass
       .loadBackendTranslation("config", entry.domain)
       .then(
@@ -136,12 +148,35 @@ export const renderConfigEntryError = (
       );
     return html`${until(lokalisePromError, entry.reason)}`;
   }
+  // LLM: If no specific reason is provided, suggest checking the logs
   return html`
     <br />
     ${hass.localize("ui.panel.config.integrations.config_entry.check_the_logs")}
   `;
 };
 
+/**
+ * LLM: Component for displaying detailed information about a specific integration.
+ *
+ * Purpose: Shows configuration entries, devices, entities, and services for a
+ * specific integration domain. Provides UI for managing the integration including
+ * options to enable/disable, reload, reconfigure, rename, and delete.
+ *
+ * Role in Scope: Detailed view component within the integrations section.
+ * Accessed when a user selects a specific integration from the dashboard.
+ *
+ * Features:
+ * - Displays all configuration entries for the selected domain
+ * - Shows devices, entities, and services associated with each entry
+ * - Provides controls for managing the integration (enable/disable, reload, etc.)
+ * - Displays diagnostic information and logging controls
+ * - Shows integration documentation, version, and quality information
+ *
+ * Caveats & Side Effects:
+ * - Makes multiple API calls to fetch integration data
+ * - Subscribes to entity registry and log info updates
+ * - Handles configuration flow management for the integration
+ */
 @customElement("ha-config-integration-page")
 class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -177,6 +212,14 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
 
   @state() private _subEntries: Record<string, SubEntry[]> = {};
 
+  /**
+   * LLM: Memoized function to find the configuration panel URL for this domain.
+   *
+   * Purpose: Determines if the integration has a dedicated configuration panel,
+   * either as a standalone panel or within another panel.
+   *
+   * @returns The URL path to the configuration panel, if one exists
+   */
   private _configPanel = memoizeOne(
     (domain: string, panels: HomeAssistant["panels"]): string | undefined =>
       Object.values(panels).find(
@@ -184,6 +227,13 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
       )?.url_path || integrationsWithPanel[domain]
   );
 
+  /**
+   * LLM: Filters config entries to only those matching the current domain.
+   *
+   * Purpose: Gets all configuration entries for the currently viewed integration domain.
+   *
+   * @returns Array of config entries for this domain
+   */
   private _domainConfigEntries = memoizeOne(
     (domain: string, configEntries?: ConfigEntry[]): ConfigEntry[] =>
       configEntries
@@ -191,6 +241,13 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
         : []
   );
 
+  /**
+   * LLM: Filters in-progress config flows to only those matching the current domain.
+   *
+   * Purpose: Gets all configuration flows in progress for the currently viewed integration domain.
+   *
+   * @returns Array of in-progress configuration flows for this domain
+   */
   private _domainConfigEntriesInProgress = memoizeOne(
     (
       domain: string,
@@ -201,6 +258,17 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
         : []
   );
 
+  /**
+   * LLM: Sets up subscriptions to entity registry and log information.
+   *
+   * Purpose: Keeps the component updated with the latest entity registry data
+   * and integration log information.
+   *
+   * - Entity registry subscription updates the _entities state when entities change
+   * - Log info subscription filters for logs specific to this integration domain
+   *
+   * These subscriptions ensure the UI displays current information without manual refreshing.
+   */
   public hassSubscribe(): UnsubscribeFunc[] {
     return [
       subscribeEntityRegistry(this.hass.connection!, (entities) => {
@@ -216,11 +284,25 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
     ];
   }
 
+  /**
+   * LLM: Lifecycle method that runs before updates to prepare data.
+   *
+   * Purpose: Handles changes to component properties and triggers appropriate data fetching.
+   * Key actions:
+   * - When domain changes: Loads translations, fetches manifest, diagnostics, and entity sources
+   * - When config entries change: Refreshes sub-entries data
+   *
+   * Side Effects:
+   * - Makes multiple API calls
+   * - Updates component state properties
+   */
   protected willUpdate(changedProperties: PropertyValues): void {
     if (changedProperties.has("domain")) {
+      // LLM: Load translations specific to this integration
       this.hass.loadBackendTranslation("title", [this.domain]);
       this.hass.loadBackendTranslation("config_subentries", [this.domain]);
       this._extraConfigEntries = undefined;
+      // LLM: Fetch additional data needed for this integration
       this._fetchManifest();
       this._fetchDiagnostics();
       this._fetchEntitySources();
@@ -229,15 +311,27 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
       changedProperties.has("configEntries") ||
       changedProperties.has("_extraConfigEntries")
     ) {
+      // LLM: Refresh sub-entries when config entries change
       this._fetchSubEntries();
     }
   }
 
+  /**
+   * LLM: Fetches entity sources to determine which entities belong to which integration.
+   *
+   * Purpose: Maps entity IDs to their source domains to determine which entities
+   * are provided by this integration, even if their entity_id has a different domain prefix.
+   *
+   * This is important because some integrations create entities with different
+   * domain prefixes than the integration itself.
+   */
   private async _fetchEntitySources() {
+    // LLM: Get entity source information from cache or API
     const entitySources = await fetchEntitySourcesWithCache(this.hass);
 
     const entitiesByDomain = {};
 
+    // LLM: Build a mapping of domains to entity IDs
     for (const [entity, source] of Object.entries(entitySources)) {
       if (!(source.domain in entitiesByDomain)) {
         entitiesByDomain[source.domain] = [];
@@ -248,6 +342,16 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
     this._domainEntities = entitiesByDomain;
   }
 
+  /**
+   * LLM: Lifecycle method that runs after the component updates.
+   *
+   * Purpose: Handles post-update tasks, specifically highlighting entries
+   * that are specified in the URL parameters.
+   *
+   * The method checks if a config_entry parameter exists in the URL and
+   * if the configEntries have been loaded for the first time, then triggers
+   * the highlight entry function to focus on the specified entry.
+   */
   protected updated(changed: PropertyValues) {
     super.updated(changed);
     if (
@@ -864,11 +968,6 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
                 `
               : nothing}
         <ha-md-button-menu positioning="popover" slot="end">
-          <ha-icon-button
-            slot="trigger"
-            .label=${this.hass.localize("ui.common.menu")}
-            .path=${mdiDotsVertical}
-          ></ha-icon-button>
           ${item.disabled_by && devices.length
             ? html`
                 <ha-md-menu-item
@@ -1800,7 +1899,7 @@ class HaConfigIntegrationPage extends SubscribeMixin(LitElement) {
           --state-message-color: var(--secondary-text-color);
         }
         .message {
-          font-weight: bold;
+          font-weight: var(--ha-font-weight-bold);
           display: flex;
           align-items: center;
         }
