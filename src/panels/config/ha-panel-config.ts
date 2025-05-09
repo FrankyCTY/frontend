@@ -57,6 +57,7 @@ declare global {
   }
 }
 
+// USERNOTE: Navigation items UI configuration
 export const configSections: Record<string, PageNavigation[]> = {
   dashboard: [
     {
@@ -379,6 +380,7 @@ class HaPanelConfig extends SubscribeMixin(HassRouterPage) {
     initialValue: [],
   });
 
+  // USERNOTE: Subscribe to Home Assistant entities and labels (see subscribe-mixin.ts)
   public hassSubscribe(): UnsubscribeFunc[] {
     return [
       subscribeEntityRegistry(this.hass.connection!, (entities) => {
@@ -390,6 +392,8 @@ class HaPanelConfig extends SubscribeMixin(HassRouterPage) {
     ];
   }
 
+  // USERNOTE: This panel itself is a sub-router, this lists all the custom components' tag of the sub-router routes and the dynamic imports for each route
+  // USERNOTE: This overwrites the default routerOptions in hass-router-page.ts which make use of it to load the correct panel for the route
   protected routerOptions: RouterOptions = {
     defaultPage: "dashboard",
     routes: {
@@ -588,6 +592,7 @@ class HaPanelConfig extends SubscribeMixin(HassRouterPage) {
 
   private _listeners: (() => void)[] = [];
 
+  // USERNOTE: Set up media queries for responsive design
   public connectedCallback() {
     super.connectedCallback();
     this._listeners.push(
@@ -611,10 +616,48 @@ class HaPanelConfig extends SubscribeMixin(HassRouterPage) {
     entityRegistryById.clear();
   }
 
+  /**
+   * LLM: Lifecycle hook called after the component's first update cycle completes.
+   *
+   * Purpose: Initializes the configuration panel with required translations, cloud status monitoring,
+   * and styling setup.
+   *
+   * Caveats & Side Effects:
+   * - Requires hass to be initialized
+   * - Sets up event listeners for cloud status updates
+   * - Modifies component styles
+   * - Loads backend translations
+   *
+   * Role in Scope: Critical initialization point for the config panel's functionality and appearance.
+   */
   protected firstUpdated(changedProps: PropertyValues) {
     super.firstUpdated(changedProps);
+    // eslint-disable-next-line no-console
+    console.log("========= ha-panel-config firstUpdated =========");
+
+    /**
+     * LLM: Loads required backend translations for the config panel.
+     *
+     * Technical Details:
+     * - Loads "title" translations for panel headers
+     * - Loads "services" translations for service descriptions
+     * - These translations are used throughout the config panel UI
+     */
     this.hass.loadBackendTranslation("title");
     this.hass.loadBackendTranslation("services");
+
+    /**
+     * LLM: Sets up cloud status monitoring if the cloud component is loaded.
+     *
+     * Technical Details:
+     * - Checks if cloud component is available
+     * - Initializes cloud status
+     * - Sets up connection status listener for reconnection scenarios
+     *
+     * Decision Points:
+     * - Only runs if cloud component is loaded
+     * - Listens for "connected" status to refresh cloud data
+     */
     if (isComponentLoaded(this.hass, "cloud")) {
       this._updateCloudStatus();
       this.addEventListener("connection-status", (ev) => {
@@ -627,6 +670,16 @@ class HaPanelConfig extends SubscribeMixin(HassRouterPage) {
     this.addEventListener("ha-refresh-cloud-status", () =>
       this._updateCloudStatus()
     );
+
+    /**
+     * LLM: Configures the panel's header styling to match the sidebar theme.
+     *
+     * Technical Details:
+     * - Sets background color to match sidebar
+     * - Sets text color to match sidebar
+     * - Adds a subtle border at the bottom
+     * - Uses CSS custom properties for theme consistency
+     */
     this.style.setProperty(
       "--app-header-background-color",
       "var(--sidebar-background-color)"
@@ -641,6 +694,7 @@ class HaPanelConfig extends SubscribeMixin(HassRouterPage) {
     );
   }
 
+  // USERNOTE: Customize how to update page element (see hass-router-page.ts)
   protected updatePageEl(el) {
     const isWide =
       this.hass.dockedSidebar === "docked" ? this._wideSidebar : this._wide;

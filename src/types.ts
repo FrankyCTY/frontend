@@ -289,7 +289,11 @@ export interface HomeAssistant {
 }
 
 export interface Route {
+  // USERNOTE: The prefix is the base URL path of the route.
+  // Example: /config/dashboard -> prefix: /config
   prefix: string;
+  // USERNOTE: The path is the remaining part of the URL path of the route.
+  // Example: /config/dashboard -> path: /dashboard
   path: string;
 }
 

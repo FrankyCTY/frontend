@@ -27,6 +27,9 @@ import { storage } from "../common/decorators/storage";
 
 const useHash = __DEMO__;
 // USERNOTE: In demo, the path is after the hash so we extract it from the hash.
+// Example: /config#dashboard -> path: dashboard
+// USERNOTE: In non-demo, the path is after the hash so we extract it from the hash.
+// Example: /config/dashboard -> pathname: /config/dashboard
 const curPath = () =>
   useHash ? location.hash.substring(1) : location.pathname;
 
@@ -200,11 +203,13 @@ export class HomeAssistantAppEl extends QuickBarMixin(HassElement) {
       if (this._route && path === this._route.path) {
         return;
       }
-      // USERNOTE: Update current route state.
+      // USERNOTE: Update current route state by passing the full pathname (e.g. /config/dashboard) into path with prefix cleared (previously /config).
       this._route = {
         prefix: "",
         path: path,
       };
+      // eslint-disable-next-line no-console
+      console.log("home-assistant: firstUpdated() - route change", this._route);
 
       // USERNOTE: Update the panel URL state based on target new path.
       this._panelUrl = panelUrl(path);

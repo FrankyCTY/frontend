@@ -371,6 +371,27 @@ export default <T extends Constructor<HassBaseEl>>(superClass: T) =>
      * @param configFlow optional, if having to fetch for all integrations with a config flow
      * @param force optional, load even if already cached
      */
+    /**
+     * LLM: Core translation loading function that manages fetching and caching of translations
+     *
+     * Purpose:
+     * - Fetches translations from backend for specified category and optional integrations
+     * - Manages translation caching to prevent duplicate loading
+     * - Handles backwards compatibility for older Home Assistant versions
+     * - Supports both single and multiple integration translations
+     *
+     * Caveats & Side Effects:
+     * - Requires hass connection to be established
+     * - May return early if translations are already cached
+     * - Handles race conditions with language changes
+     * - May trigger UI updates through _updateResources
+     *
+     * Role in Scope:
+     * - Central translation loading mechanism for the frontend
+     * - Integrates with backend translation system
+     * - Manages translation lifecycle and caching
+     * - Supports both core and integration-specific translations
+     */
     private async _loadHassTranslations(
       language: string,
       category: Parameters<typeof getHassTranslations>[2],
@@ -378,16 +399,23 @@ export default <T extends Constructor<HassBaseEl>>(superClass: T) =>
       configFlow?: Parameters<typeof getHassTranslations>[4],
       force = false
     ): Promise<LocalizeFunc> {
+      // LLM: Backward compatibility check for older Home Assistant versions
+      // This ensures the system works with older versions that don't support the new translation system
       if (
         __BACKWARDS_COMPAT__ &&
         !atLeastVersion(this.hass!.connection.haVersion, 0, 109)
       ) {
+        // LLM: For older versions, only state category is supported
+        // This is a limitation of the legacy translation system
         if (category !== "state") {
           return this.hass!.localize;
         }
+        // LLM: Use legacy translation loading method for older versions
+        // This ensures compatibility with pre-0.109 versions
         const resources = await getHassTranslationsPre109(this.hass!, language);
 
-        // Ignore the response if user switched languages before we got response
+        // LLM: Race condition check - ignore response if language changed during fetch
+        // This prevents applying outdated translations if user changed language during the async operation
         if (this.hass!.language !== language) {
           return this.hass!.localize;
         }
@@ -395,8 +423,12 @@ export default <T extends Constructor<HassBaseEl>>(superClass: T) =>
         return this._updateResources(language, resources);
       }
 
+      // LLM: Get or create cache entry for this translation category
+      // This prevents duplicate loading of the same translations
       let alreadyLoaded: LoadedTranslationCategory;
 
+      // LLM: Check if category exists in cache, create new entry if not
+      // This ensures we have a valid cache entry for tracking loaded translations
       if (category in this.__loadedTranslations) {
         alreadyLoaded = this.__loadedTranslations[category];
       } else {
@@ -409,37 +441,53 @@ export default <T extends Constructor<HassBaseEl>>(superClass: T) =>
 
       let integrationsToLoad: string[] = [];
 
-      // Check if already loaded
+      // LLM: Skip cache check if force=true, otherwise check if translations are already loaded
+      // This allows forcing a refresh of translations when needed
       if (!force) {
+        // LLM: Handle array of integrations - filter out already loaded ones
+        // This prevents duplicate loading of the same integration translations
         if (integration && Array.isArray(integration)) {
           integrationsToLoad = integration.filter(
             (i) => !alreadyLoaded.integrations.includes(i)
           );
+          // LLM: Return early if all integrations are already loaded
+          // This optimizes performance by avoiding unnecessary network requests
           if (!integrationsToLoad.length) {
             return this.hass!.localize;
           }
         } else if (integration) {
+          // LLM: Single integration case - check if already loaded
+          // This handles the simpler case of loading a single integration's translations
           if (alreadyLoaded.integrations.includes(integration)) {
             return this.hass!.localize;
           }
           integrationsToLoad = [integration];
         } else if (
+          // LLM: No specific integration - check if requested setup/configFlow already loaded
+          // This handles the case of loading general setup or config flow translations
           configFlow ? alreadyLoaded.configFlow : alreadyLoaded.setup
         ) {
           return this.hass!.localize;
         }
       }
 
-      // Add to cache
+      // LLM: Update cache with new translations to be loaded
+      // This ensures we don't try to load the same translations again
       if (integrationsToLoad.length) {
+        // LLM: Add new integrations to cache to prevent future duplicate loading
+        // This maintains the cache state for future translation requests
         alreadyLoaded.integrations.push(...integrationsToLoad);
       } else {
+        // LLM: Mark integrations (setup flag) & configFlow as loaded in cache
+        // This tracks the loading state of general translations
         alreadyLoaded.setup = true;
         if (configFlow) {
           alreadyLoaded.configFlow = true;
         }
       }
 
+      // LLM: Fetch translations from backend with current parameters
+      // This is the actual network request to get the translations
       const resources = await getHassTranslations(
         this.hass!,
         language,
@@ -448,11 +496,15 @@ export default <T extends Constructor<HassBaseEl>>(superClass: T) =>
         configFlow
       );
 
-      // Ignore the response if user switched languages before we got response
+      // LLM: Race condition check - ignore response if language changed during fetch
+      // This prevents applying outdated translations if user changed language during the async operation
+      // USERNOTE: As something might have invoked _updateResources() already.
       if (this.hass!.language !== language) {
         return this.hass!.localize;
       }
 
+      // LLM: Merge new translations with existing ones and update UI
+      // This ensures all translations are properly combined and applied
       return this._updateResources(language, resources);
     }
 

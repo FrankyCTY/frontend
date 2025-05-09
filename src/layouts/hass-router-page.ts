@@ -71,6 +71,11 @@ export class HassRouterPage extends ReactiveElement {
 
   private _initialLoadDone = false;
 
+  // USERNOTE: This method _computeTail is a memoized function that processes a Route object to split its path into two parts:
+  // - prefix: The base URL path of the route.
+  //   - Example: /config/dashboard -> prefix: /config
+  // - path: The remaining part of the URL path of the route.
+  //  - Example: /config/dashboard -> path: /dashboard
   private _computeTail = memoizeOne((route: Route) => {
     const dividerPos = route.path.indexOf("/", 1);
     return dividerPos === -1
@@ -89,8 +94,6 @@ export class HassRouterPage extends ReactiveElement {
   }
 
   protected update(changedProps: PropertyValues) {
-    // eslint-disable-next-line no-console
-    console.log("hass-router-page: update", changedProps);
     super.update(changedProps);
 
     const routerOptions = this.routerOptions || { routes: {} };
@@ -112,11 +115,17 @@ export class HassRouterPage extends ReactiveElement {
 
     // USERNOTE: ============== HANDLE ROUTE CHANGE ==============
     const route = this.route;
+    // eslint-disable-next-line no-console
+    console.log("hass-router-page: update() - route change", route);
     const defaultPage = routerOptions.defaultPage;
 
     // USERNOTE: If route path is root, re-navigate to default page.
+    // Example:
+    // If the route has no path (i.e., /config, where route.path === "", prefix: /config)
+    // And a defaultPage is set in routerOptions → then navigate.
     if (route && route.path === "" && defaultPage !== undefined) {
       const queryParams = window.location.search;
+      // USERNOTE: Navigate to the default page. (e.g. /config/dashboard for config panel)
       navigate(`${route.prefix}/${defaultPage}${queryParams}`, {
         replace: true,
       });
