@@ -3111,6 +3111,7 @@
         },
         "info": {
           "caption": "About",
+          "installation_method": "Installation method",
           "copy_menu": "Copy menu",
           "copy_raw": "Raw text",
           "copy_github": "For GitHub",
@@ -3552,7 +3553,8 @@
               "test_wakeword": "Test",
               "edit_pipeline": "Edit",
               "try_tts": "Try",
-              "done": "Done"
+              "done": "Done",
+              "failed_rename": "Failed to rename the voice satellite: {error}"
             }
           }
         },

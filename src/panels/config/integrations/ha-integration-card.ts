@@ -1,3 +1,22 @@
+/**
+ * LLM: Integration Card Component
+ *
+ * Purpose:
+ * Renders a card representing a Home Assistant integration, showing its status, devices, entities,
+ * and configuration options. This component is used in the integrations configuration panel.
+ *
+ * Role in Scope:
+ * - Displays integration status and metadata
+ * - Provides navigation to related devices/entities
+ * - Shows integration type indicators (custom, cloud, yaml)
+ * - Handles error states and debugging information
+ *
+ * Caveats:
+ * - Requires Home Assistant instance and domain to be set
+ * - Manages complex state calculations for multiple config entries
+ * - Handles RTL (right-to-left) layout considerations
+ */
+
 import { mdiFileCodeOutline, mdiPackageVariant, mdiWeb } from "@mdi/js";
 import type { CSSResultGroup, TemplateResult } from "lit";
 import { LitElement, css, html, nothing } from "lit";
@@ -45,6 +64,17 @@ export class HaIntegrationCard extends LitElement {
 
   @property({ attribute: false }) public domainEntities: string[] = [];
 
+  /**
+   * LLM: Main Render Method
+   *
+   * Purpose:
+   * Renders the integration card with appropriate styling based on state and debug status.
+   *
+   * Implementation Details:
+   * - Applies state-based CSS classes for visual feedback
+   * - Renders header with integration info and status
+   * - Delegates device/entity rendering to _renderSingleEntry
+   */
   protected render(): TemplateResult {
     const entryState = this._getState(this.items);
 
@@ -97,6 +127,17 @@ export class HaIntegrationCard extends LitElement {
     `;
   }
 
+  /**
+   * LLM: Single Entry Renderer
+   *
+   * Purpose:
+   * Renders the action buttons and icons for a single integration entry.
+   *
+   * Implementation Details:
+   * - Calculates device and entity counts
+   * - Renders appropriate action buttons based on available data
+   * - Shows integration type indicators (custom, cloud, yaml)
+   */
   private _renderSingleEntry(): TemplateResult {
     const devices = this._getDevices(this.items, this.hass.devices);
     const entitiesCount = devices.length
@@ -109,6 +150,13 @@ export class HaIntegrationCard extends LitElement {
 
     const services = !devices.some((device) => device.entry_type !== "service");
 
+    //   Has devices? ───► ✅ Show "X devices"/"X services"
+    //  │
+    //  └── Has entities? ───► ✅ Show "X entities"
+    //        │
+    //        └── Has non-YAML config entries? ───► ✅ Show "X entries"
+    //              │
+    //              └── ❌ Show nothing (spacer)
     return html`
       <div class="card-actions">
         ${devices.length > 0
@@ -205,6 +253,20 @@ export class HaIntegrationCard extends LitElement {
     `;
   }
 
+  /**
+   * LLM: State Calculator
+   *
+   * Purpose:
+   * Determines the overall state of multiple config entries.
+   *
+   * Implementation Details:
+   * - Returns single entry state if only one entry exists
+   * - Prioritizes error states over normal states
+   * - Uses memoization for performance
+   *
+   * @param configEntry - Array of configuration entries to analyze
+   * @returns The most significant state among the entries
+   */
   private _getState = memoizeOne(
     (configEntry: ConfigEntry[]): ConfigEntry["state"] => {
       if (configEntry.length === 1) {
@@ -212,6 +274,7 @@ export class HaIntegrationCard extends LitElement {
       }
       let entryState: ConfigEntry["state"];
       for (const entry of configEntry) {
+        // USERNOTE: If any of the config entries have an error state, return that state as the overall state
         if (ERROR_STATES.includes(entry.state)) {
           return entry.state;
         }
@@ -221,6 +284,22 @@ export class HaIntegrationCard extends LitElement {
     }
   );
 
+  /**
+   * LLM: Entity Counter
+   *
+   * Purpose:
+   * Calculates the total number of entities associated with config entries of this card/domain/integration.
+   *
+   * Implementation Details:
+   * - Handles both registry and domain entities
+   * - Deduplicates entities across multiple sources
+   * - Uses memoization for performance
+   *
+   * @param configEntry - One or more config entries (same integration/domain)
+   * @param entityRegistryEntries - The full list of entities from HA's entity registry
+   * @param domainEntities - List of entities grouped by integration domain (grouped heuristically or by source domain that might not associate with the config entries)
+   * @returns Total number of unique entities
+   */
   private _getEntityCount = memoizeOne(
     (
       configEntry: ConfigEntry[],
@@ -231,6 +310,7 @@ export class HaIntegrationCard extends LitElement {
         return domainEntities.length;
       }
 
+      // USERNOTE: The entry ids for the config entries in this card/domain/integration
       const entryIds = configEntry
         .map((entry) => entry.entry_id)
         .filter(Boolean);
@@ -239,6 +319,7 @@ export class HaIntegrationCard extends LitElement {
         return domainEntities.length;
       }
 
+      // USERNOTE: Get the entity entries that are associated with the config entries in this card/domain/integration
       const entityRegEntities = entityRegistryEntries.filter(
         (entity) =>
           entity.config_entry_id && entryIds.includes(entity.config_entry_id)
@@ -248,10 +329,12 @@ export class HaIntegrationCard extends LitElement {
         return domainEntities.length;
       }
 
+      // USERNOTE: Entity entry ids that are associated with the config entries in this card/domain/integration
       const entityIds = new Set<string>(
         entityRegEntities.map((reg) => reg.entity_id)
       );
 
+      // USERNOTE: Add the domain entities to the set
       for (const entity of domainEntities) {
         entityIds.add(entity);
       }
@@ -260,6 +343,20 @@ export class HaIntegrationCard extends LitElement {
     }
   );
 
+  /**
+   * LLM: Device Finder
+   *
+   * Purpose:
+   * Retrieves all devices associated with given config entries of this card/domain/integration.
+   *
+   * Implementation Details:
+   * - Filters device registry entries by config entry IDs
+   * - Uses memoization for performance
+   *
+   * @param configEntry - Configuration entries to find devices for
+   * @param deviceRegistryEntries - Current device registry entries
+   * @returns Array of matching device registry entries
+   */
   private _getDevices = memoizeOne(
     (
       configEntry: ConfigEntry[],

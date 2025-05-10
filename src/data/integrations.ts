@@ -12,6 +12,7 @@ export interface Integration {
   supported_by?: string;
   is_built_in?: boolean;
   overwrites_built_in?: boolean;
+  // USERNOTE: Indicates that this integration allows only one configuration
   single_config_entry?: boolean;
 }
 

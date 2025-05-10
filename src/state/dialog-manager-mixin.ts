@@ -32,6 +32,7 @@ export const dialogManagerMixin = <T extends Constructor<HassBaseEl>>(
       this.addEventListener("register-dialog", (e) =>
         this.registerDialog(e.detail)
       );
+      // USERNOTE: This set up dialog manager and start listening to the show-dialog event.
       makeDialogManager(this, this.shadowRoot!);
     }
 
@@ -41,6 +42,7 @@ export const dialogManagerMixin = <T extends Constructor<HassBaseEl>>(
       dialogImport,
       addHistory = true,
     }: RegisterDialogParams) {
+      // FIXME: Deprecated? Only for 'hass-notification' event?
       this.addEventListener(dialogShowEvent, (showEv) => {
         showDialog(
           this,

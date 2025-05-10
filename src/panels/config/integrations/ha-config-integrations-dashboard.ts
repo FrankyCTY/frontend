@@ -1066,8 +1066,10 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
     this._fetchManifests();
   }
 
+  // USERNOTE: Handles the add integration flow reqeust from button click event
   private _createFlow() {
     showAddIntegrationDialog(this, {
+      // USERNOTE: Pass the search filter to the dialog search input
       initialFilter: this._filter,
     });
   }
@@ -1366,7 +1368,7 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
           padding-left: 8px;
           padding-inline-start: 8px;
           padding-inline-end: 2px;
-          font-size: 14px;
+          font-size: var(--ha-font-size-m);
           width: max-content;
           cursor: initial;
           direction: var(--direction);

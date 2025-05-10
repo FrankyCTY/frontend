@@ -76,7 +76,9 @@ export const showDialog = async (
     }
     LOADED[dialogTag] = {
       element: dialogImport().then(() => {
+        // USERNOTE: Dialog is created in the document element.
         const dialogEl = document.createElement(dialogTag) as HassDialog;
+        // USERNOTE: Dynamically inject the hass instance property to the dialog element & set up hass update listener in the provide hass mixin
         element.provideHass(dialogEl);
         dialogEl.addEventListener("dialog-closed", _handleClosed);
         dialogEl.addEventListener("dialog-closed", _handleClosedFocus);
@@ -214,6 +216,7 @@ export const makeDialogManager = (
   element: HTMLElement & ProvideHassElement,
   root: ShadowRoot | HTMLElement
 ) => {
+  // USERNOTE: Start listening to the show-dialog event, invoked by dialog-manager-mixin.ts which is part of the functionality empower the root hass-element.
   element.addEventListener(
     "show-dialog",
     (e: HASSDomEvent<ShowDialogParams<unknown>>) => {

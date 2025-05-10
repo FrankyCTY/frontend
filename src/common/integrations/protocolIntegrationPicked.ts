@@ -11,6 +11,7 @@ import { documentationUrl } from "../../util/documentation-url";
 import { isComponentLoaded } from "../config/is_component_loaded";
 import { navigate } from "../navigate";
 
+// USERNOTE: Integrations for user to set up the protocol layer (e.g., ZHA, Z-Wave JS, Matter) that enables many brands/devices to connect.
 export const PROTOCOL_INTEGRATIONS = ["zha", "zwave_js", "matter"] as const;
 
 export const protocolIntegrationPicked = async (

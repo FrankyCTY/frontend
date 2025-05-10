@@ -67,10 +67,16 @@ export interface IntegrationListItem {
   integrations?: string[];
   domains?: string[];
   iot_standards?: string[];
+  // USERNOTE: Delegated Integration Setup to Protocol Integration
+  // USERNOTE: Indicates that this integration is supported by another integration, usually a protocol integration. (e.g., Zha, Z-Wave, Matter)
   supported_by?: string;
+  // USERNOTE: Is Iot class starts with 'cloud_'
+  // USERNOTE: These are integrations that are cloud-based and require an internet connection.
   cloud?: boolean;
   is_built_in?: boolean;
   overwrites_built_in?: boolean;
+  // USERNOTE: For those protocol integrations (e.g., Zha, Z-Wave, Matter) that can be added to.
+  // USERNOTE: Indicates there is integrated (already set up) protocol integration that this integration can be added to.
   is_add?: boolean;
   single_config_entry?: boolean;
 }
@@ -87,6 +93,8 @@ class AddIntegrationDialog extends LitElement {
 
   @state() private _integrations?: Brands;
 
+  // USERNOTE: Helper Integrations: These are typically UI-configurable entities that users can add to enhance automation logic, dashboards, or behavior
+  // - They aren't traditional device or service integrations.
   @state() private _helpers?: Integrations;
 
   @state() private _initialFilter?: string;
@@ -114,6 +122,8 @@ class AddIntegrationDialog extends LitElement {
    * Caveats: Handles different entry points (brand, domain, initial filter)
    */
   public async showDialog(params?: AddIntegrationDialogParams): Promise<void> {
+    // eslint-disable-next-line no-console
+    console.log("dialog-add-integration", params);
     const loadPromise = this._load();
     this._open = true;
     this._pickedBrand = params?.brand;
@@ -201,10 +211,7 @@ class AddIntegrationDialog extends LitElement {
       localize: LocalizeFunc,
       filter?: string
     ): IntegrationListItem[] => {
-      // LLM: Add device rows for protocol integrations (Z-Wave, Zigbee, etc.)
-      // Purpose: Create entries for hardware protocol integrations
-      // Role: Shows device discovery options for supported protocols
-      // Caveats: Only shows protocols that are loaded as components
+      // USERNOTE: For direct protocol integrations which only need to 'trigger device pairing flows' since there are already integrated protocol integrations. (e.g., Zha, Z-Wave, Matter)
       const addDeviceRows: IntegrationListItem[] = PROTOCOL_INTEGRATIONS.filter(
         (domain) => components.includes(domain)
       )
@@ -223,15 +230,11 @@ class AddIntegrationDialog extends LitElement {
           )
         );
 
-      // LLM: Initialize lists for different integration types
-      // Purpose: Separate integrations by their configuration method
-      // Role: Organizes integrations for display and filtering
+      // USERNOTE: Separates UI-configurable integrations and YAML-only integrations for different display logic.
       const integrations: IntegrationListItem[] = [];
       const yamlIntegrations: IntegrationListItem[] = [];
 
-      // LLM: Process each integration from the brands list
-      // Purpose: Categorize integrations based on their properties
-      // Role: Determines how each integration should be handled
+      // FIXME: Why integration with type 'Brand' | 'Integration'?
       Object.entries(i).forEach(([domain, integration]) => {
         // LLM: Skip hardware integrations as they can't be added via UI
         if (
@@ -241,9 +244,7 @@ class AddIntegrationDialog extends LitElement {
           return;
         }
 
-        // LLM: Handle integrations with config flow, IoT standards, or supported by another integration
-        // Purpose: Process integrations that use the config flow system
-        // Role: Creates entries for user-friendly setup flows
+        // USERNOTE: For integrations that support config flow, IoT standards, or supported by another integration.
         if (
           "integration_type" in integration &&
           (integration.config_flow ||
@@ -265,13 +266,11 @@ class AddIntegrationDialog extends LitElement {
             is_built_in: supportedIntegration.is_built_in !== false,
             overwrites_built_in: integration.overwrites_built_in,
             cloud: supportedIntegration.iot_class?.startsWith("cloud_"),
+            // USERNOTE: Indicates that this integration allows only one configuration
             single_config_entry: integration.single_config_entry,
           });
-        }
-        // LLM: Handle brand integrations (collections of related integrations)
-        // Purpose: Process brand-specific integrations (e.g., Apple, Google)
-        // Role: Groups related integrations under a brand
-        else if (
+        } else if (
+          // USERNOTE: For meta-integrations: These entries do not represent a single integration in the traditional sense, but rather a collection of multiple related integrations under a recognizable brand or ecosystem umbrella (Apple, Google, Amazon, etc.).
           !("integration_type" in integration) &&
           ("iot_standards" in integration || "integrations" in integration)
         ) {
@@ -290,11 +289,8 @@ class AddIntegrationDialog extends LitElement {
             is_built_in: integration.is_built_in !== false,
             overwrites_built_in: integration.overwrites_built_in,
           });
-        }
-        // LLM: Handle YAML-based integrations (no config flow)
-        // Purpose: Process integrations that require manual YAML configuration
-        // Role: Shows YAML configuration instructions
-        else if (filter && "integration_type" in integration) {
+          // USERNOTE: For YAML-only integrations: These integrations don't support UI config (no config_flow) and require manual YAML setup.
+        } else if (filter && "integration_type" in integration) {
           yamlIntegrations.push({
             domain,
             name: integration.name || domainToName(localize, domain),
@@ -398,6 +394,7 @@ class AddIntegrationDialog extends LitElement {
         findIntegration(this._integrations, this._pickedBrand)
       : undefined;
 
+    // USERNOTE: Render specific integration or all integrations
     return html`<ha-dialog
       open
       @closed=${this.closeDialog}
@@ -472,11 +469,33 @@ class AddIntegrationDialog extends LitElement {
     this._supportedBy(ev.detail.integration);
   }
 
+  /**
+   * LLM: Integration Support Handler
+   *
+   * Purpose:
+   * Handles the case where an integration is supported by another integration, showing a confirmation
+   * dialog and routing to the appropriate setup flow.
+   *
+   * Role in Scope:
+   * - Part of the integration setup flow
+   * - Bridges between supported integrations and their supporting integrations
+   * - Ensures users understand the relationship between integrations
+   *
+   * Caveats:
+   * - Requires the supporting integration to exist in the system
+   * - May trigger protocol-specific flows for certain integrations
+   * - Can fail if the supporting integration is not found
+   *
+   * @param integration - The integration that is supported by another integration
+   */
   private _supportedBy(integration) {
+    // LLM: Find the supporting integration that provides the actual functionality
     const supportIntegration = findIntegration(
       this._integrations,
       integration.supported_by
     );
+
+    // LLM: Show confirmation dialog explaining the integration relationship
     showConfirmationDialog(this, {
       text: this.hass.localize(
         "ui.panel.config.integrations.config_flow.supported_brand_flow",
@@ -491,10 +510,13 @@ class AddIntegrationDialog extends LitElement {
       ),
       confirm: () => {
         this.closeDialog();
+        // LLM: Handle protocol-specific integrations (e.g., Zha, Z-Wave, Matter)
+        // USERNOTE: Protocol specific integration: Integrations for user to set up the protocol layer (e.g., ZHA, Z-Wave JS, Matter) that enables many brands/devices to connect.
         if (PROTOCOL_INTEGRATIONS.includes(integration.supported_by)) {
           protocolIntegrationPicked(this, this.hass, integration.supported_by);
           return;
         }
+        // LLM: If supporting integration exists, start its setup flow
         if (supportIntegration) {
           this._handleIntegrationPicked({
             domain: integration.supported_by,
@@ -505,6 +527,7 @@ class AddIntegrationDialog extends LitElement {
             iot_standards: supportIntegration.iot_standards,
           });
         } else {
+          // LLM: Show error if supporting integration is not found
           showAlertDialog(this, {
             text: "Integration not found",
             warning: true,
@@ -514,6 +537,7 @@ class AddIntegrationDialog extends LitElement {
     });
   }
 
+  // USERNOTE: Render "all integrations" dialog content
   private _renderAll(integrations?: IntegrationListItem[]): TemplateResult {
     return html`<search-input
         .hass=${this.hass}
@@ -611,6 +635,7 @@ class AddIntegrationDialog extends LitElement {
     this._filter = e.detail.value;
   }
 
+  // USERNOTE: Handles integration picked
   private _integrationPicked(ev) {
     const listItem = ev.target.closest("ha-integration-list-item");
     if (!listItem) {
@@ -626,37 +651,54 @@ class AddIntegrationDialog extends LitElement {
   }
 
   /**
-   * LLM: Handles integration selection and starts appropriate setup flow
-   * Purpose: Routes integration setup based on integration type
-   * Role: Central decision point for integration setup
-   * Caveats: Different paths for different integration types
+   * USERNOTE: Handles integration selection and starts the appropriate setup flow.
+   *
+   * Purpose:
+   * - Acts as the central routing function for all integration types when selected from the integrations dialog.
+   *
+   * Handles:
+   * - Integrations supported by another (via `supported_by`) — redirects to the supporting protocol.
+   * - Protocol integrations marked with `is_add` — starts device pairing (e.g., ZHA, Z-Wave, Matter).
+   * - Helper integrations (`is_helper`) — navigates to the Helpers UI for entity creation (e.g., input_boolean).
+   * - Brand collections (`integrations`) — displays grouped integrations under a common brand (e.g., Apple, Google) in a dialog.
+   * - Already-loaded protocol integrations — switches view to the protocol section (for status or device management).
+   * - IoT standard integrations (`iot_standards`) — shows protocol-specific integration views.
+   * - Single-config-entry integrations (`single_config_entry`) — prevents reconfiguration if already set up.
+   * - UI-configurable integrations (`config_flow`) — starts the integration config flow.
+   * - Home Assistant Cloud integration (`domain === "cloud"`) — navigates to cloud settings.
+   * - Voice assistant integrations (`google_assistant`, `alexa`) — navigates to assistant configuration.
+   * - YAML-only integrations (fallback) — fetches and shows manifest instructions.
    */
   private async _handleIntegrationPicked(integration: IntegrationListItem) {
-    // LLM: Handle integrations supported by another integration
+    // eslint-disable-next-line no-console
+    console.log("Picked integration from add integration dialog", integration);
+    // LLM: This integration is supported by a other integration (likely a protocol integration).
     if (integration.supported_by) {
       this._supportedBy(integration);
       return;
     }
 
-    // LLM: Handle protocol integrations (Z-Wave, Zigbee, etc.)
+    // LLM: Handle adding devices to existing protocol integrations
+    // This path is for when a protocol integration is already set up and we want to add more devices
     if (integration.is_add) {
       protocolIntegrationPicked(this, this.hass, integration.domain);
       this.closeDialog();
       return;
     }
 
-    // LLM: Handle helper integrations
+    // USERNOTE: Handle helper integrations (e.g., input_boolean, counter)
+    // These are simple logic or UI helpers created via the Helpers UI
     if (integration.is_helper) {
       this.closeDialog();
       navigate(`/config/helpers/add?domain=${integration.domain}`);
       return;
     }
 
-    // LLM: Handle brand integrations (collections of related integrations)
+    // USERNOTE: Brand (meta) collections (`integrations`) — displays grouped integrations under a common brand (e.g., Apple, Google) in a dialog.
     if (integration.integrations) {
       let domains = integration.domains || [];
+      // LLM: Special case for Apple integration - exclude HomeKit controller from brand view
       if (integration.domain === "apple") {
-        // we show discovered homekit devices in their own brand section, dont show them in apple
         domains = domains.filter((domain) => domain !== "homekit_controller");
       }
       this._fetchFlowsInProgress(domains);
@@ -664,11 +706,14 @@ class AddIntegrationDialog extends LitElement {
       return;
     }
 
-    // LLM: Handle protocol integrations with loaded component
+    // USERNOTE: Handle already-loaded protocol integrations
+    // These protocols (e.g., ZHA, Z-Wave, Matter) are already set up,
+    // so update the UI to show their integration section (e.g., for pairing new devices)
     if (
       (PROTOCOL_INTEGRATIONS as readonly string[]).includes(
         integration.domain
       ) &&
+      // USERNOTE: Component loaded means it can be used already.
       isComponentLoaded(this.hass, integration.domain)
     ) {
       this._pickedBrand = integration.domain;
@@ -676,12 +721,14 @@ class AddIntegrationDialog extends LitElement {
     }
 
     // LLM: Handle IoT standard integrations
+    // These are integrations that follow specific IoT protocols or standards
     if (integration.iot_standards) {
       this._pickedBrand = integration.domain;
       return;
     }
 
-    // LLM: Handle single config entry integrations
+    // LLM: Handle integrations that only allow a single configuration
+    // These integrations can only be configured once in the system
     if (integration.single_config_entry) {
       const configEntries = await getConfigEntries(this.hass, {
         domain: integration.domain,
@@ -707,13 +754,16 @@ class AddIntegrationDialog extends LitElement {
       }
     }
 
-    // LLM: Handle config flow integrations
+    // LLM: Handle integrations with config flow
+    // These integrations support UI-based configuration
     if (integration.config_flow) {
       this._createFlow(integration.domain);
       return;
     }
 
-    // LLM: Handle cloud integrations
+    // NOTE: This is not cloud flag (which indicates require internet access), but cloud domain.
+    // USERNOTE: Handle the Home Assistant Cloud integration (Nabu Casa)
+    // Opens the cloud settings page for account management and remote access
     if (
       integration.domain === "cloud" &&
       isComponentLoaded(this.hass, "cloud")
@@ -723,7 +773,8 @@ class AddIntegrationDialog extends LitElement {
       return;
     }
 
-    // LLM: Handle voice assistant integrations
+    // USERNOTE: Handle Google Assistant and Alexa integrations (via Home Assistant Cloud)
+    // These are managed through Home Assistant Cloud and require cloud component loaded
     if (
       ["google_assistant", "alexa"].includes(integration.domain) &&
       isComponentLoaded(this.hass, "cloud")
@@ -734,6 +785,8 @@ class AddIntegrationDialog extends LitElement {
     }
 
     // LLM: Handle YAML-based integrations
+    // These integrations require manual YAML configuration
+    // USERNOTE: Fetch integration yaml manifest from HA core
     const manifest = await fetchIntegrationManifest(
       this.hass,
       integration.domain
@@ -864,7 +917,10 @@ class AddIntegrationDialog extends LitElement {
         margin-inline-end: initial;
         padding: 24px 24px 0 24px;
         color: var(--mdc-dialog-heading-ink-color, rgba(0, 0, 0, 0.87));
-        font-size: var(--mdc-typography-headline6-font-size, 1.25rem);
+        font-size: var(
+          --mdc-typography-headline6-font-size,
+          var(--ha-font-size-l)
+        );
         line-height: var(--mdc-typography-headline6-line-height, 2rem);
         font-weight: var(
           --mdc-typography-headline6-font-weight,
