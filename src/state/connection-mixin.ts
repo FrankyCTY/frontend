@@ -8,6 +8,7 @@ import {
   subscribeServices,
 } from "home-assistant-js-websocket";
 import { fireEvent } from "../common/dom/fire_event";
+import { promiseTimeout } from "../common/util/promise-timeout";
 import { subscribeAreaRegistry } from "../data/area_registry";
 import { broadcastConnectionStatus } from "../data/connection-status";
 import { subscribeDeviceRegistry } from "../data/device_registry";
@@ -22,6 +23,8 @@ import {
   TimeFormat,
   TimeZone,
 } from "../data/translation";
+import { subscribeEntityRegistryDisplay } from "../data/ws-entity_registry_display";
+import { subscribeFloorRegistry } from "../data/ws-floor_registry";
 import { subscribePanels } from "../data/ws-panels";
 import { translationMetadata } from "../resources/translations-metadata";
 import type { Constructor, HomeAssistant, ServiceCallResponse } from "../types";
@@ -30,9 +33,6 @@ import { fetchWithAuth } from "../util/fetch-with-auth";
 import { getState } from "../util/ha-pref-storage";
 import hassCallApi, { hassCallApiRaw } from "../util/hass-call-api";
 import type { HassBaseEl } from "./hass-base-mixin";
-import { promiseTimeout } from "../common/util/promise-timeout";
-import { subscribeFloorRegistry } from "../data/ws-floor_registry";
-import { subscribeEntityRegistryDisplay } from "../data/ws-entity_registry_display";
 
 /**
  * LLM: Core WebSocket connection and subscription management
@@ -326,13 +326,12 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
       // Purpose: Subscribe to panel configuration changes
       // Role: Update available panels and their settings
       subscribePanels(conn, (panels) => this._updateHass({ panels }));
-
       // LLM: User data subscription
       // Purpose: Subscribe to user-specific settings
       // Role: Update UI based on user preferences
-      subscribeFrontendUserData(conn, "core", (userData) =>
-        this._updateHass({ userData })
-      );
+      subscribeFrontendUserData(conn, "core", ({ value: userData }) => {
+        this._updateHass({ userData });
+      });
 
       // LLM: Connection health monitoring
       // Purpose: Ensure WebSocket connection remains active
@@ -344,6 +343,7 @@ export const connectionMixin = <T extends Constructor<HassBaseEl>>(
             if (!this.hass?.connected) {
               return;
             }
+            // eslint-disable-next-line no-console
             console.log("WebSocket died, forcing reconnect...");
             this.hass?.connection.reconnect(true);
           });
