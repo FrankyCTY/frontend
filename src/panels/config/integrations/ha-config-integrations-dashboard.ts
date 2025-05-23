@@ -650,6 +650,7 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
         back-path="/config"
         .route=${this.route}
         .tabs=${configSections.devices}
+        has-fab
       >
         ${this.narrow
           ? html`
@@ -1313,9 +1314,6 @@ class HaConfigIntegrationsDashboard extends KeyboardShortcutMixin(
           grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
           grid-gap: 8px 8px;
           padding: 8px 16px 16px;
-        }
-        .container:last-of-type {
-          margin-bottom: 64px;
         }
         .empty-message {
           margin: auto;
