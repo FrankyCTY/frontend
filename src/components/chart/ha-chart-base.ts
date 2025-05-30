@@ -27,6 +27,7 @@ import "../ha-icon-button";
 import { formatTimeLabel } from "./axis-label";
 import { ensureArray } from "../../common/array/ensure-array";
 import "../chips/ha-assist-chip";
+import { downSampleLineData } from "./down-sample";
 
 export const MIN_TIME_BETWEEN_UPDATES = 60 * 5 * 1000;
 const LEGEND_OVERFLOW_LIMIT = 10;
@@ -219,11 +220,11 @@ export class HaChartBase extends LitElement {
       return nothing;
     }
     const datasets = ensureArray(this.data);
-    const items = (legend.data ||
-      datasets
+    const items: LegendComponentOption["data"] =
+      legend.data ||
+      ((datasets
         .filter((d) => (d.data as any[])?.length && (d.id || d.name))
-        .map((d) => d.name ?? d.id) ||
-      []) as string[];
+        .map((d) => d.name ?? d.id) || []) as string[]);
 
     const isMobile = window.matchMedia(
       "all and (max-width: 450px), all and (max-height: 500px)"
@@ -238,20 +239,32 @@ export class HaChartBase extends LitElement {
       })}
     >
       <ul>
-        ${items.map((item: string, index: number) => {
+        ${items.map((item, index) => {
           if (!this.expandLegend && index >= overflowLimit) {
             return nothing;
           }
-          const dataset = datasets.find(
-            (d) => d.id === item || d.name === item
-          );
-          const color = dataset?.color as string;
-          const borderColor = dataset?.itemStyle?.borderColor as string;
+          let itemStyle: Record<string, any> = {};
+          let name = "";
+          if (typeof item === "string") {
+            name = item;
+            const dataset = datasets.find(
+              (d) => d.id === item || d.name === item
+            );
+            itemStyle = {
+              color: dataset?.color as string,
+              ...(dataset?.itemStyle as { borderColor?: string }),
+            };
+          } else {
+            name = item.name ?? "";
+            itemStyle = item.itemStyle ?? {};
+          }
+          const color = itemStyle?.color as string;
+          const borderColor = itemStyle?.borderColor as string;
           return html`<li
-            .name=${item}
+            .name=${name}
             @click=${this._legendClick}
-            class=${classMap({ hidden: this._hiddenDatasets.has(item) })}
-            .title=${item}
+            class=${classMap({ hidden: this._hiddenDatasets.has(name) })}
+            .title=${name}
           >
             <div
               class="bullet"
@@ -260,7 +273,7 @@ export class HaChartBase extends LitElement {
                 borderColor: borderColor || color,
               })}
             ></div>
-            <div class="label">${item}</div>
+            <div class="label">${name}</div>
           </li>`;
         })}
         ${items.length > overflowLimit
@@ -481,6 +494,13 @@ export class HaChartBase extends LitElement {
         smooth: false,
       },
       bar: { itemStyle: { barBorderWidth: 1.5 } },
+      graph: {
+        label: {
+          color: style.getPropertyValue("--primary-text-color"),
+          textBorderColor: style.getPropertyValue("--primary-background-color"),
+          textBorderWidth: 2,
+        },
+      },
       categoryAxis: {
         axisLine: { show: false },
         axisTick: { show: false },
@@ -613,19 +633,21 @@ export class HaChartBase extends LitElement {
   }
 
   private _getSeries() {
-    const series = ensureArray(this.data).filter(
-      (d) => !this._hiddenDatasets.has(String(d.name ?? d.id))
-    );
+    const xAxis = (this.options?.xAxis?.[0] ?? this.options?.xAxis) as
+      | XAXisOption
+      | undefined;
     const yAxis = (this.options?.yAxis?.[0] ?? this.options?.yAxis) as
       | YAXisOption
       | undefined;
-    if (yAxis?.type === "log") {
-      // set <=0 values to null so they render as gaps on a log graph
-      return series.map((d) =>
-        d.type === "line"
-          ? {
-              ...d,
-              data: d.data?.map((v) =>
+    const series = ensureArray(this.data)
+      .filter((d) => !this._hiddenDatasets.has(String(d.name ?? d.id)))
+      .map((s) => {
+        if (s.type === "line") {
+          if (yAxis?.type === "log") {
+            // set <=0 values to null so they render as gaps on a log graph
+            return {
+              ...s,
+              data: s.data?.map((v) =>
                 Array.isArray(v)
                   ? [
                       v[0],
@@ -634,10 +656,26 @@ export class HaChartBase extends LitElement {
                     ]
                   : v
               ),
-            }
-          : d
-      );
-    }
+            };
+          }
+          if (s.sampling === "minmax") {
+            const minX =
+              xAxis?.min && typeof xAxis.min === "number"
+                ? xAxis.min
+                : undefined;
+            const maxX =
+              xAxis?.max && typeof xAxis.max === "number"
+                ? xAxis.max
+                : undefined;
+            return {
+              ...s,
+              sampling: undefined,
+              data: downSampleLineData(s.data, this.clientWidth, minX, maxX),
+            };
+          }
+        }
+        return s;
+      });
     return series;
   }
 
